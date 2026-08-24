@@ -1,0 +1,18 @@
+.DS_Store
+.env
+
+backend/.venv/
+backend/app/__pycache__/
+backend/.pytest_cache/
+
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+*.pyc
+
+# Local sensitive data
+staff.csv
+data/
+backups/
+*.sql
