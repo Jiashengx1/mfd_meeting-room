@@ -101,8 +101,15 @@ export interface DaySchedule {
 }
 
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL || ''
-const isLanBrowser = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-const API_BASE = isLanBrowser ? `${window.location.protocol}//${window.location.hostname}:8000` : configuredApiBase || 'http://localhost:8000'
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const isDevPort = window.location.port === '5173'
+const isPlainHttp = window.location.protocol === 'http:'
+const inferredDevApiBase = isLocalhost
+  ? 'http://localhost:8000'
+  : isPlainHttp && isDevPort
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : ''
+const API_BASE = configuredApiBase || inferredDevApiBase
 const TOKEN_KEY = 'meeting_room_token'
 
 export function getToken() {

@@ -60,7 +60,7 @@ docker compose exec backend python -m app.import_staff /app/staff.csv
 - 后端健康检查：http://localhost:8000/api/health
 - 后端 API 文档：http://localhost:8000/docs
 
-同一 Wi-Fi 手机访问时，先查 Mac 当前 Wi-Fi IP：
+同一 Wi-Fi 手机访问时，本机 `.env` 需要临时设置 `PUBLISH_HOST=0.0.0.0`，然后重建服务。之后先查 Mac 当前 Wi-Fi IP：
 
 ```bash
 ipconfig getifaddr en0
@@ -83,6 +83,75 @@ BACKEND_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://你的IP
 ```bash
 docker compose up -d --build backend
 ```
+
+## 生产部署要点
+
+建议生产环境使用一台轻量服务器，通过外层 Nginx 提供 HTTPS，并反向代理到本机端口：
+
+- `https://你的域名/` -> `http://127.0.0.1:5173`
+- `https://你的域名/api/` -> `http://127.0.0.1:8000/api/`
+
+前端容器运行的是构建后的静态预览服务，公网入口仍由服务器 Nginx 负责 HTTPS 和反向代理。
+
+生产环境启动建议使用：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+生产 `.env` 必须修改：
+
+```ini
+POSTGRES_PASSWORD=强数据库密码
+DATABASE_URL=postgresql+psycopg://meeting_room:强数据库密码@db:5432/meeting_room
+SECRET_KEY=强随机字符串
+BACKEND_CORS_ORIGINS=https://你的域名
+VITE_API_BASE_URL=
+REGISTRATION_SECURITY_ANSWER=罗马琳达大学
+```
+
+`VITE_API_BASE_URL` 留空表示生产环境使用同域 `/api`，由 Nginx 反向代理到后端。
+
+服务器安全组建议只开放：
+
+- `80`
+- `443`
+- `22`，最好限制为你的固定 IP
+
+不要向公网开放：
+
+- `5173`
+- `8000`
+- `5432`
+
+`PUBLISH_HOST=127.0.0.1` 会将这些服务端口绑定到服务器本机，只能由服务器本机访问。
+
+示例 Nginx 配置：
+
+```nginx
+server {
+    listen 80;
+    server_name 你的域名;
+
+    location / {
+        proxy_pass http://127.0.0.1:5173;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+正式启用 HTTPS 后，`BACKEND_CORS_ORIGINS` 使用 `https://你的域名`。
 
 ## 重置数据库
 
