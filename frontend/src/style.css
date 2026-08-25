@@ -387,6 +387,35 @@ h3 { font-size: 17px; margin-bottom: 8px; }
   .tabs { max-width: 520px; }
   .booking-row { grid-template-columns: 135px minmax(0, 1fr) minmax(160px, auto); align-items: center; }
   .row-actions { grid-template-columns: 1fr 1fr; margin-top: 0; }
+  .sheet-mask {
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+  }
+  .recurring-sheet {
+    width: min(760px, 100%);
+    max-height: min(760px, calc(100vh - 56px));
+    border-radius: 14px;
+    padding: 22px 24px 24px;
+    box-shadow: 0 24px 80px rgba(16, 24, 40, .28);
+  }
+  .recurring-sheet .sheet-handle { display: none; }
+  .recurring-sheet .sheet-close { right: 16px; top: 14px; }
+  .recurring-sheet .sheet-room-head {
+    margin: -2px -24px 18px;
+    padding: 0 0 16px;
+    border-bottom: 1px solid #e7ebef;
+    touch-action: auto;
+  }
+  .recurring-sheet .sheet-room-head h2 {
+    padding: 0 24px;
+    margin-bottom: 6px;
+    font-size: 22px;
+  }
+  .recurring-sheet .sheet-room-head p { padding: 0 24px; font-size: 14px; }
+  .recurring-sheet .mobile-menu-card { border: 1px solid #e7ebef; border-radius: 12px; }
+  .recurring-sheet .mobile-menu-card button { min-height: 72px; font-size: 18px; }
+  .recurring-sheet .weekday-grid { grid-template-columns: repeat(7, 1fr); }
 }
 
 .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }

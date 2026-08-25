@@ -1060,75 +1060,6 @@ onMounted(async () => {
           </section>
         </section>
 
-        <div v-if="recurringSheetOpen" class="sheet-mask" @click.self="closeRecurringSheet">
-          <section class="mobile-sheet recurring-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
-            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeRecurringSheet)"></div>
-            <button class="sheet-close" @click="closeRecurringSheet"><X :size="22" /></button>
-            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeRecurringSheet)">
-              <h2>{{ recurringMode === 'manage' ? '周期预约管理' : recurringMode === 'create' ? '预约周期会议' : '取消周期会议' }}</h2>
-              <p>{{ recurringMode === 'manage' ? '选择要执行的周期会议操作' : recurringMode === 'create' ? '每周重复，先预览再确认创建' : '选择周期组，取消该组下未来有效预约' }}</p>
-            </div>
-
-            <div v-if="recurringMode === 'manage'" class="mobile-menu-card recurring-manage-card">
-              <button @click="openRecurringSheet">
-                <CalendarCheck :size="30" />
-                <span>预约周期会议</span>
-                <ChevronRight :size="24" />
-              </button>
-              <button @click="openRecurringCancelSheet">
-                <XCircle :size="30" />
-                <span>取消周期会议</span>
-                <ChevronRight :size="24" />
-              </button>
-            </div>
-
-            <template v-else-if="recurringMode === 'create'">
-              <form class="form-stack sheet-form" @submit.prevent="previewRecurringBookings">
-                <label>会议室<select v-model.number="recurringForm.room_id" required><option v-for="room in recurringActiveRooms" :key="room.id" :value="room.id">{{ room.name }}</option></select></label>
-                <div class="time-grid"><label>开始日期<input v-model="recurringForm.start_date" type="date" required /></label><label>结束日期<input v-model="recurringForm.end_date" type="date" required /></label></div>
-                <div class="weekday-grid">
-                  <button v-for="item in weekdayOptions" :key="item.value" type="button" :class="{ active: recurringForm.weekdays.includes(item.value) }" @click="toggleRecurringWeekday(item.value)">{{ item.label }}</button>
-                </div>
-                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="h in hourOptions" :key="h">{{ h }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="h in endHourOptions" :key="h">{{ h }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="recurringForm.end_hour === '24'"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label></div>
-                <label>部门<input :value="user?.department || ''" readonly /></label>
-                <label>使用人<input :value="user?.name || ''" readonly /></label>
-                <label>会议名称<input v-model="recurringForm.title" required /></label>
-                <label>参会人数<input v-model.number="recurringForm.attendee_count" type="number" min="1" required /></label>
-                <label>备注<textarea v-model="recurringForm.note" rows="3" /></label>
-                <div class="recurring-actions">
-                  <button class="primary" :disabled="loading || recurringForm.weekdays.length === 0 || !recurringForm.room_id">预览</button>
-                  <button type="button" :disabled="loading || !recurringResult" @click="createRecurringBookings">确认创建</button>
-                </div>
-              </form>
-              <section v-if="recurringResult" class="recurring-result">
-                <h3>{{ recurringSummary }}</h3>
-                <div v-if="recurringResult.success.length"><strong>成功</strong><p v-for="item in recurringResult.success" :key="`s-${item.start_at}`">{{ recurringItemText(item) }}</p></div>
-                <div v-if="recurringResult.conflicts.length"><strong>冲突</strong><p v-for="item in recurringResult.conflicts" :key="`c-${item.start_at}`">{{ recurringItemText(item) }} {{ recurringConflictText(item) }}</p></div>
-                <div v-if="recurringResult.expired.length"><strong>过期</strong><p v-for="item in recurringResult.expired" :key="`e-${item.start_at}`">{{ recurringItemText(item) }} 已结束</p></div>
-              </section>
-            </template>
-
-            <template v-else>
-              <div class="recurring-result recurring-series-list">
-                <button class="primary wide-button" :disabled="loading" @click="withLoading(loadRecurringSeries)">刷新周期组</button>
-                <div v-if="recurringSeriesList.length === 0" class="empty mobile-empty">暂无可取消的周期会议</div>
-                <article v-for="series in recurringSeriesList" :key="series.id" class="admin-list-card">
-                  <h3>{{ series.title }}</h3>
-                  <p><strong>会议室：</strong>{{ series.room.name }}</p>
-                  <p><strong>周期：</strong>{{ recurringSeriesText(series) }}</p>
-                  <p><strong>使用人：</strong>{{ series.department || series.created_by.department }} {{ series.user_name || series.created_by.name }}</p>
-                  <p><strong>未来有效：</strong>{{ series.future_active_booking_count }} 条</p>
-                  <button :disabled="loading || series.future_active_booking_count === 0" @click="cancelRecurringSeries(series)">取消这个周期会议</button>
-                </article>
-              </div>
-              <section v-if="recurringSeriesCancelResult" class="recurring-result">
-                <h3>{{ recurringSeriesCancelSummary }}</h3>
-                <div v-if="recurringSeriesCancelResult.cancelled.length"><strong>已取消</strong><p v-for="booking in recurringSeriesCancelResult.cancelled" :key="`series-cancel-${booking.id}`">{{ bookingDateTimeText(booking) }} · {{ booking.room.name }}</p></div>
-              </section>
-            </template>
-          </section>
-        </div>
-
         <div v-if="mobileRoomSheetOpen" class="sheet-mask" @click.self="closeMobileRoomSheet">
           <section class="mobile-sheet room-edit-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
             <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileRoomSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeMobileRoomSheet)"></div>
@@ -1219,6 +1150,75 @@ onMounted(async () => {
         </div>
       </section>
 
+        <div v-if="recurringSheetOpen" class="sheet-mask" @click.self="closeRecurringSheet">
+          <section class="mobile-sheet recurring-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeRecurringSheet)"></div>
+            <button class="sheet-close" @click="closeRecurringSheet"><X :size="22" /></button>
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeRecurringSheet)">
+              <h2>{{ recurringMode === 'manage' ? '周期预约管理' : recurringMode === 'create' ? '预约周期会议' : '取消周期会议' }}</h2>
+              <p>{{ recurringMode === 'manage' ? '选择要执行的周期会议操作' : recurringMode === 'create' ? '每周重复，先预览再确认创建' : '选择周期组，取消该组下未来有效预约' }}</p>
+            </div>
+
+            <div v-if="recurringMode === 'manage'" class="mobile-menu-card recurring-manage-card">
+              <button @click="openRecurringSheet">
+                <CalendarCheck :size="30" />
+                <span>预约周期会议</span>
+                <ChevronRight :size="24" />
+              </button>
+              <button @click="openRecurringCancelSheet">
+                <XCircle :size="30" />
+                <span>取消周期会议</span>
+                <ChevronRight :size="24" />
+              </button>
+            </div>
+
+            <template v-else-if="recurringMode === 'create'">
+              <form class="form-stack sheet-form" @submit.prevent="previewRecurringBookings">
+                <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="recurringForm.room_id" required><option v-for="room in recurringActiveRooms" :key="room.id" :value="room.id">{{ room.name }}</option></select></label>
+                <div class="time-grid"><label><span>开始日期 <b class="required-star">*</b></span><input v-model="recurringForm.start_date" type="date" required /></label><label><span>结束日期 <b class="required-star">*</b></span><input v-model="recurringForm.end_date" type="date" required /></label></div>
+                <div class="weekday-grid">
+                  <button v-for="item in weekdayOptions" :key="item.value" type="button" :class="{ active: recurringForm.weekdays.includes(item.value) }" @click="toggleRecurringWeekday(item.value)">{{ item.label }}</button>
+                </div>
+                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="h in hourOptions" :key="h">{{ h }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="h in endHourOptions" :key="h">{{ h }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="recurringForm.end_hour === '24'"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label></div>
+                <label>部门<input :value="user?.department || ''" readonly /></label>
+                <label>使用人<input :value="user?.name || ''" readonly /></label>
+                <label><span>会议名称 <b class="required-star">*</b></span><input v-model="recurringForm.title" required /></label>
+                <label><span>参会人数 <b class="required-star">*</b></span><input v-model.number="recurringForm.attendee_count" type="number" min="1" required /></label>
+                <label>备注<textarea v-model="recurringForm.note" rows="3" /></label>
+                <div class="recurring-actions">
+                  <button class="primary" :disabled="loading || recurringForm.weekdays.length === 0 || !recurringForm.room_id">预览</button>
+                  <button type="button" :disabled="loading || !recurringResult" @click="createRecurringBookings">确认创建</button>
+                </div>
+              </form>
+              <section v-if="recurringResult" class="recurring-result">
+                <h3>{{ recurringSummary }}</h3>
+                <div v-if="recurringResult.success.length"><strong>成功</strong><p v-for="item in recurringResult.success" :key="`s-${item.start_at}`">{{ recurringItemText(item) }}</p></div>
+                <div v-if="recurringResult.conflicts.length"><strong>冲突</strong><p v-for="item in recurringResult.conflicts" :key="`c-${item.start_at}`">{{ recurringItemText(item) }} {{ recurringConflictText(item) }}</p></div>
+                <div v-if="recurringResult.expired.length"><strong>过期</strong><p v-for="item in recurringResult.expired" :key="`e-${item.start_at}`">{{ recurringItemText(item) }} 已结束</p></div>
+              </section>
+            </template>
+
+            <template v-else>
+              <div class="recurring-result recurring-series-list">
+                <button class="primary wide-button" :disabled="loading" @click="withLoading(loadRecurringSeries)">刷新周期组</button>
+                <div v-if="recurringSeriesList.length === 0" class="empty mobile-empty">暂无可取消的周期会议</div>
+                <article v-for="series in recurringSeriesList" :key="series.id" class="admin-list-card">
+                  <h3>{{ series.title }}</h3>
+                  <p><strong>会议室：</strong>{{ series.room.name }}</p>
+                  <p><strong>周期：</strong>{{ recurringSeriesText(series) }}</p>
+                  <p><strong>使用人：</strong>{{ series.department || series.created_by.department }} {{ series.user_name || series.created_by.name }}</p>
+                  <p><strong>未来有效：</strong>{{ series.future_active_booking_count }} 条</p>
+                  <button :disabled="loading || series.future_active_booking_count === 0" @click="cancelRecurringSeries(series)">取消这个周期会议</button>
+                </article>
+              </div>
+              <section v-if="recurringSeriesCancelResult" class="recurring-result">
+                <h3>{{ recurringSeriesCancelSummary }}</h3>
+                <div v-if="recurringSeriesCancelResult.cancelled.length"><strong>已取消</strong><p v-for="booking in recurringSeriesCancelResult.cancelled" :key="`series-cancel-${booking.id}`">{{ bookingDateTimeText(booking) }} · {{ booking.room.name }}</p></div>
+              </section>
+            </template>
+          </section>
+        </div>
+
       <div v-if="notice || error" class="toast" :class="{ error: !!error }">{{ error || notice }}</div>
 
       <section class="desktop-app">
@@ -1250,13 +1250,13 @@ onMounted(async () => {
           <aside class="booking-panel">
             <h2>{{ bookingForm.id ? '修改预约' : '新建预约' }}</h2>
             <form class="form-stack" @submit.prevent="saveBooking">
-              <label>会议室<select v-model.number="bookingForm.room_id"><option v-for="room in rooms.filter((r) => r.is_active)" :key="room.id" :value="room.id">{{ room.name }}</option></select></label>
+              <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="bookingForm.room_id" required><option v-for="room in rooms.filter((r) => r.is_active)" :key="room.id" :value="room.id">{{ room.name }}</option></select></label>
               <label>部门<input :value="user?.department || ''" readonly /></label>
               <label>使用人<input :value="user?.name || ''" readonly /></label>
-              <label>日期 <input v-model="bookingForm.booking_date" type="date" /></label>
+              <label><span>日期 <b class="required-star">*</b></span><input v-model="bookingForm.booking_date" type="date" required /></label>
               <div class="time-grid"><label>开始小时<select v-model="bookingForm.start_hour"><option v-for="h in hourOptions" :key="h">{{ h }}</option></select></label><label>开始分钟<select v-model="bookingForm.start_minute"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label><label>结束小时<select v-model="bookingForm.end_hour"><option v-for="h in endHourOptions" :key="h">{{ h }}</option></select></label><label>结束分钟<select v-model="bookingForm.end_minute" :disabled="bookingForm.end_hour === '24'"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label></div>
-              <label>会议名称 <input v-model="bookingForm.title" required /></label>
-              <label>参会人数 <input v-model.number="bookingForm.attendee_count" type="number" min="1" /></label>
+              <label><span>会议名称 <b class="required-star">*</b></span><input v-model="bookingForm.title" required /></label>
+              <label><span>参会人数 <b class="required-star">*</b></span><input v-model.number="bookingForm.attendee_count" type="number" min="1" required /></label>
               <label>备注 <textarea v-model="bookingForm.note" rows="3" /></label>
               <button class="primary" :disabled="loading || !bookingForm.room_id"><Save :size="17" />保存预约</button>
             </form>
@@ -1274,7 +1274,7 @@ onMounted(async () => {
             <div class="section-title-row"><h3>全部预约</h3><button class="primary" @click="openRecurringManager">周期预约管理</button></div><div class="booking-list"><BookingItem v-for="booking in allBookings" :key="booking.id" :booking="booking" @edit="prepareBooking" @cancel="cancelBooking" /></div>
 
           </div>
-          <aside class="booking-panel"><h2>{{ roomForm.id ? '修改会议室' : '新增会议室' }}</h2><form class="form-stack" @submit.prevent="saveRoom"><label>名称 <input v-model="roomForm.name" /></label><label>位置 <input v-model="roomForm.location" /></label><label>容量 <input v-model.number="roomForm.capacity" type="number" min="1" /></label><label>备注 <textarea v-model="roomForm.description" rows="3" /></label><label class="check"><input v-model="roomForm.is_active" type="checkbox" />启用</label><button class="primary" :disabled="loading"><Save :size="17" />保存会议室</button><button type="button" @click="editRoom()"><X :size="17" />清空</button></form></aside>
+          <aside class="booking-panel"><h2>{{ roomForm.id ? '修改会议室' : '新增会议室' }}</h2><form class="form-stack" @submit.prevent="saveRoom"><label><span>名称 <b class="required-star">*</b></span><input v-model="roomForm.name" required /></label><label>位置 <input v-model="roomForm.location" /></label><label><span>容量 <b class="required-star">*</b></span><input v-model.number="roomForm.capacity" type="number" min="1" required /></label><label>备注 <textarea v-model="roomForm.description" rows="3" /></label><label class="check"><input v-model="roomForm.is_active" type="checkbox" />启用</label><button class="primary" :disabled="loading"><Save :size="17" />保存会议室</button><button type="button" @click="editRoom()"><X :size="17" />清空</button></form></aside>
         </section>
 
         <button class="refresh" @click="withLoading(refreshAll)" title="刷新"><RefreshCcw :size="20" /></button>
