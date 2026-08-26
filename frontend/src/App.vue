@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, PropType, reactive, ref, watch } from 'vue'
 import {
+  BarChart3,
   Building2,
   CalendarCheck,
   CalendarDays,
@@ -9,6 +10,9 @@ import {
   DoorOpen,
   LogOut,
   MonitorUp,
+  Pencil,
+  Plus,
+  Power,
   RefreshCcw,
   Save,
   Shield,
@@ -22,6 +26,7 @@ import { api, Booking, DaySchedule, formatLocalDate, formatLocalMonthDay, format
 
 type Tab = 'home' | 'schedule' | 'mine' | 'admin'
 type MobileAdminView = 'home' | 'bookings' | 'rooms' | 'stats'
+type DesktopAdminView = 'bookings' | 'rooms' | 'recurring' | 'stats'
 type AdminBookingStatus = 'active' | 'finished' | 'cancelled'
 type RoomStatusFilter = 'all' | 'active' | 'disabled'
 
@@ -53,6 +58,7 @@ const error = ref('')
 const notice = ref('')
 const activeTab = ref<Tab>('home')
 const mobileAdminView = ref<MobileAdminView>('home')
+const desktopAdminView = ref<DesktopAdminView>('bookings')
 const adminBookingDate = ref(dateInputInShanghai())
 const adminBookingStatus = ref<AdminBookingStatus>('active')
 const adminRoomStatus = ref<RoomStatusFilter>('all')
@@ -812,6 +818,21 @@ async function saveRoom() {
   })
 }
 
+async function toggleRoomStatus(room: Room) {
+  if (room.is_active && !window.confirm('停用后不能产生新预约，但不会取消已有预约。确认停用该会议室？')) return
+  await withLoading(async () => {
+    await api.updateRoom(room.id, {
+      name: room.name,
+      location: room.location,
+      capacity: room.capacity,
+      description: room.description,
+      is_active: !room.is_active,
+    })
+    showMessage(room.is_active ? '会议室已停用' : '会议室已启用')
+    await refreshAll()
+  })
+}
+
 function bookingBarStyle(booking: Booking) {
   const start = new Date(booking.start_at)
   const end = new Date(booking.end_at)
@@ -1259,17 +1280,105 @@ onMounted(async () => {
           <h2>我的预约</h2><h3>周期会议</h3><div class="booking-list"><article v-for="series in activeMyRecurringSeries" :key="series.id" class="booking-row"><span>{{ series.room.name }}</span><strong>{{ series.title }}</strong><small>{{ recurringSeriesText(series) }} · 未来 {{ series.future_active_booking_count }} 次</small></article></div><h3>即将开始</h3><div class="booking-list"><BookingItem v-for="booking in upcoming" :key="booking.id" :booking="booking" @edit="prepareBooking" @cancel="cancelBooking" /></div><h3>已结束</h3><div class="booking-list"><BookingItem v-for="booking in finished" :key="booking.id" :booking="booking" /></div><h3>已取消</h3><div class="booking-list"><BookingItem v-for="booking in cancelled" :key="booking.id" :booking="booking" /></div>
         </section>
 
-        <section v-if="isAdmin" v-show="activeTab === 'admin'" class="layout">
-          <div class="content-column">
-            <h2>管理</h2><div class="stats"><span>今日 {{ stats.today_bookings || 0 }}</span><span>本周 {{ stats.week_bookings || 0 }}</span><span>启用会议室 {{ stats.active_rooms || 0 }}</span></div>
-            <h3>会议室</h3><article v-for="room in rooms" :key="room.id" class="room-card"><div class="room-head"><div><h3>{{ room.name }}</h3><p>{{ room.location }} · {{ room.capacity }}人 · {{ room.is_active ? '启用' : '停用' }}</p></div><button @click="editRoom(room)">编辑</button></div></article>
-            <div class="section-title-row"><h3>全部预约</h3><button class="primary" @click="openRecurringManager">周期预约管理</button></div><div class="booking-list"><BookingItem v-for="booking in allBookings" :key="booking.id" :booking="booking" @edit="prepareBooking" @cancel="cancelBooking" /></div>
+        <section v-if="isAdmin" v-show="activeTab === 'admin'" class="desktop-admin">
+          <header class="desktop-admin-header">
+            <div>
+              <span>管理后台</span>
+              <h2>{{ desktopAdminView === 'bookings' ? '预约管理' : desktopAdminView === 'rooms' ? '会议室管理' : desktopAdminView === 'recurring' ? '周期预约管理' : '统计信息' }}</h2>
+            </div>
+          </header>
 
-          </div>
-          <aside class="booking-panel"><h2>{{ roomForm.id ? '修改会议室' : '新增会议室' }}</h2><form class="form-stack" @submit.prevent="saveRoom"><label><span>名称 <b class="required-star">*</b></span><input v-model="roomForm.name" required /></label><label>位置 <input v-model="roomForm.location" /></label><label><span>容量 <b class="required-star">*</b></span><input v-model.number="roomForm.capacity" type="number" min="1" required /></label><label>备注 <textarea v-model="roomForm.description" rows="3" /></label><label class="check"><input v-model="roomForm.is_active" type="checkbox" />启用</label><button class="primary" :disabled="loading"><Save :size="17" />保存会议室</button><button type="button" @click="editRoom()"><X :size="17" />清空</button></form></aside>
+          <nav class="desktop-admin-tabs" aria-label="管理模块">
+            <button :class="{ active: desktopAdminView === 'bookings' }" @click="desktopAdminView = 'bookings'"><CalendarDays :size="18" />预约管理</button>
+            <button :class="{ active: desktopAdminView === 'rooms' }" @click="desktopAdminView = 'rooms'"><MonitorUp :size="18" />会议室管理</button>
+            <button :class="{ active: desktopAdminView === 'recurring' }" @click="desktopAdminView = 'recurring'"><CalendarCheck :size="18" />周期预约管理</button>
+            <button :class="{ active: desktopAdminView === 'stats' }" @click="desktopAdminView = 'stats'"><BarChart3 :size="18" />统计信息</button>
+          </nav>
+
+          <section v-show="desktopAdminView === 'bookings'" class="desktop-admin-module">
+            <div class="desktop-module-toolbar">
+              <div><h3>所有预约</h3></div>
+              <div class="desktop-date-controls">
+                <button class="icon-button" title="前一天" @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="18" /></button>
+                <label><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" /></label>
+                <button class="icon-button" title="后一天" @click="shiftAdminBookingDate(1)"><ChevronRight :size="18" /></button>
+                <button @click="withLoading(loadAdminData)"><RefreshCcw :size="17" />刷新</button>
+              </div>
+            </div>
+            <div class="desktop-filter-row">
+              <button :class="{ active: adminBookingStatus === 'active' }" @click="adminBookingStatus = 'active'">有效</button>
+              <button :class="{ active: adminBookingStatus === 'finished' }" @click="adminBookingStatus = 'finished'">已结束</button>
+              <button :class="{ active: adminBookingStatus === 'cancelled' }" @click="adminBookingStatus = 'cancelled'">已取消</button>
+            </div>
+            <div v-if="adminFilteredBookings.length === 0" class="empty">当前条件下暂无预约</div>
+            <div v-else class="booking-list"><BookingItem v-for="booking in adminFilteredBookings" :key="booking.id" :booking="booking" @edit="prepareBooking" @cancel="cancelBooking" /></div>
+          </section>
+
+          <section v-show="desktopAdminView === 'rooms'" class="desktop-admin-module">
+            <div class="desktop-module-toolbar">
+              <div><h3>会议室列表</h3><p>共 {{ rooms.length }} 间，当前启用 {{ rooms.filter((room) => room.is_active).length }} 间</p></div>
+              <button class="primary" @click="openMobileRoomSheet()"><Plus :size="18" />新增会议室</button>
+            </div>
+            <div class="desktop-filter-row">
+              <button :class="{ active: adminRoomStatus === 'all' }" @click="adminRoomStatus = 'all'">全部 {{ rooms.length }}</button>
+              <button :class="{ active: adminRoomStatus === 'active' }" @click="adminRoomStatus = 'active'">启用 {{ rooms.filter((room) => room.is_active).length }}</button>
+              <button :class="{ active: adminRoomStatus === 'disabled' }" @click="adminRoomStatus = 'disabled'">停用 {{ rooms.filter((room) => !room.is_active).length }}</button>
+            </div>
+            <div v-if="adminFilteredRooms.length === 0" class="empty">当前条件下暂无会议室</div>
+            <div v-else class="desktop-room-table">
+              <div class="desktop-room-table-head"><span>会议室</span><span>位置</span><span>容量</span><span>状态</span><span>操作</span></div>
+              <article v-for="room in adminFilteredRooms" :key="room.id" class="desktop-room-row">
+                <div class="desktop-room-name"><strong>{{ room.name }}</strong><small>{{ room.description || '暂无备注或设备说明' }}</small></div>
+                <span>{{ room.location || '暂无位置' }}</span>
+                <span>{{ room.capacity }} 人</span>
+                <span><b :class="['desktop-status', room.is_active ? 'active' : 'disabled']">{{ room.is_active ? '启用' : '停用' }}</b></span>
+                <div class="desktop-room-actions">
+                  <button title="编辑会议室" @click="openMobileRoomSheet(room)"><Pencil :size="16" />编辑</button>
+                  <button :class="{ danger: room.is_active }" :title="room.is_active ? '停用会议室' : '启用会议室'" @click="toggleRoomStatus(room)"><Power :size="16" />{{ room.is_active ? '停用' : '启用' }}</button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section v-show="desktopAdminView === 'recurring'" class="desktop-admin-module">
+            <div class="desktop-module-toolbar"><div><h3>周期预约管理</h3></div></div>
+            <div class="desktop-action-grid">
+              <button @click="openRecurringSheet"><CalendarCheck :size="28" /><span><strong>预约周期会议</strong><small>每周重复，可多选星期并预览冲突</small></span><ChevronRight :size="20" /></button>
+              <button @click="openRecurringCancelSheet"><XCircle :size="28" /><span><strong>取消周期会议</strong><small>按周期组取消尚未开始的有效预约</small></span><ChevronRight :size="20" /></button>
+            </div>
+          </section>
+
+          <section v-show="desktopAdminView === 'stats'" class="desktop-admin-module">
+            <div class="desktop-module-toolbar"><div><h3>统计信息</h3></div><button @click="refreshAdminStats"><RefreshCcw :size="17" />刷新</button></div>
+            <div class="desktop-stats-grid">
+              <article><span>今日预约</span><strong>{{ stats.today_bookings || 0 }}</strong></article>
+              <article><span>本周预约</span><strong>{{ stats.week_bookings || 0 }}</strong></article>
+              <article><span>启用会议室</span><strong>{{ stats.active_rooms || 0 }}</strong></article>
+            </div>
+          </section>
         </section>
 
-        <button class="refresh" @click="withLoading(refreshAll)" title="刷新"><RefreshCcw :size="20" /></button>
+        <div v-if="mobileRoomSheetOpen" class="desktop-drawer-mask" @click.self="closeMobileRoomSheet">
+          <aside class="desktop-room-drawer">
+            <header>
+              <div><span>会议室信息</span><h2>{{ roomForm.id ? '编辑会议室' : '新增会议室' }}</h2></div>
+              <button class="icon-button" title="关闭" @click="closeMobileRoomSheet"><X :size="20" /></button>
+            </header>
+            <form class="form-stack" @submit.prevent="saveRoom">
+              <label><span>名称 <b class="required-star">*</b></span><input v-model="roomForm.name" required /></label>
+              <label>位置<input v-model="roomForm.location" /></label>
+              <label><span>容量 <b class="required-star">*</b></span><input v-model.number="roomForm.capacity" type="number" min="1" required /></label>
+              <label>备注/设备<textarea v-model="roomForm.description" rows="4" /></label>
+              <label class="check desktop-room-toggle"><input v-model="roomForm.is_active" type="checkbox" />启用会议室</label>
+              <div class="desktop-drawer-actions">
+                <button type="button" @click="closeMobileRoomSheet">取消</button>
+                <button class="primary" :disabled="loading"><Save :size="17" />保存会议室</button>
+              </div>
+            </form>
+          </aside>
+        </div>
+
+        <button v-show="activeTab !== 'admin'" class="refresh" @click="withLoading(refreshAll)" title="刷新"><RefreshCcw :size="20" /></button>
       </section>
     </template>
   </main>

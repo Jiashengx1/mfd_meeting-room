@@ -432,3 +432,149 @@ h3 { font-size: 17px; margin-bottom: 8px; }
 .recurring-result div { display: grid; gap: 6px; }
 .recurring-result strong { color: #1d252d; }
 .recurring-result p { margin: 0; padding: 8px 10px; border-radius: 10px; background: #f5f7fa; color: #5d6670; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+
+.desktop-drawer-mask { display: none; }
+
+@media (min-width: 860px) {
+  .desktop-admin { display: grid; gap: 14px; }
+  .desktop-admin-header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    min-height: 58px;
+  }
+  .desktop-admin-header span,
+  .desktop-room-drawer header span {
+    display: block;
+    margin-bottom: 5px;
+    color: #7a838c;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .desktop-admin-header h2,
+  .desktop-room-drawer header h2 { margin: 0; }
+  .desktop-admin-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 5px;
+    border: 1px solid #e2e7eb;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .desktop-admin-tabs button {
+    border: 0;
+    background: transparent;
+    color: #5f6973;
+  }
+  .desktop-admin-tabs button.active {
+    background: #e9f2ff;
+    color: #155fc5;
+    font-weight: 700;
+  }
+  .desktop-admin-module {
+    display: grid;
+    gap: 16px;
+    min-height: 360px;
+    padding: 20px;
+    border: 1px solid #e2e7eb;
+    border-radius: 8px;
+    background: #fff;
+  }
+  .desktop-module-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .desktop-module-toolbar h3 { margin: 0 0 5px; font-size: 19px; }
+  .desktop-module-toolbar p { margin: 0; color: #69747e; font-size: 14px; }
+  .desktop-date-controls { display: flex; align-items: center; gap: 7px; }
+  .desktop-date-controls label {
+    position: relative;
+    min-width: 166px;
+    min-height: 42px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #d2d8de;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .desktop-date-controls label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .desktop-filter-row { display: flex; gap: 6px; padding-bottom: 2px; border-bottom: 1px solid #edf0f3; }
+  .desktop-filter-row button { min-height: 36px; border: 0; border-radius: 0; background: transparent; color: #69747e; }
+  .desktop-filter-row button.active { color: #155fc5; font-weight: 700; box-shadow: inset 0 -2px #1e73ff; }
+  .desktop-room-table { overflow: hidden; border: 1px solid #e2e7eb; border-radius: 8px; }
+  .desktop-room-table-head,
+  .desktop-room-row {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.5fr) minmax(120px, 1fr) 72px 82px minmax(190px, auto);
+    gap: 14px;
+    align-items: center;
+  }
+  .desktop-room-table-head {
+    min-height: 44px;
+    padding: 0 16px;
+    background: #f6f8fa;
+    color: #6c7680;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .desktop-room-row { min-height: 78px; padding: 12px 16px; }
+  .desktop-room-row + .desktop-room-row { border-top: 1px solid #e8ecef; }
+  .desktop-room-row > span { color: #46515b; font-size: 14px; }
+  .desktop-room-name { display: grid; gap: 5px; min-width: 0; }
+  .desktop-room-name strong { overflow-wrap: anywhere; }
+  .desktop-room-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .desktop-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+  .desktop-status::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }
+  .desktop-status.active { background: #e8f5ee; color: #17633f; }
+  .desktop-status.disabled { background: #edf0f3; color: #68717a; }
+  .desktop-room-actions { display: flex; justify-content: flex-end; gap: 7px; }
+  .desktop-room-actions button { min-height: 36px; padding: 0 10px; font-size: 13px; }
+  .desktop-room-actions button.danger { color: #b42318; border-color: #efc7c3; }
+  .desktop-action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-self: start; }
+  .desktop-action-grid > button {
+    min-height: 104px;
+    justify-content: flex-start;
+    padding: 18px;
+    text-align: left;
+  }
+  .desktop-action-grid > button > span { display: grid; flex: 1; gap: 7px; }
+  .desktop-action-grid strong { font-size: 17px; }
+  .desktop-action-grid small { color: #6d7781; font-size: 13px; }
+  .desktop-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-self: start; }
+  .desktop-stats-grid article { display: grid; gap: 12px; min-height: 126px; padding: 20px; border: 1px solid #e2e7eb; border-radius: 8px; }
+  .desktop-stats-grid span { color: #69747e; font-size: 14px; }
+  .desktop-stats-grid strong { font-size: 32px; }
+  .desktop-drawer-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    justify-content: flex-end;
+    background: rgba(16, 24, 40, .35);
+  }
+  .desktop-room-drawer {
+    width: min(440px, 100%);
+    min-height: 100vh;
+    overflow: auto;
+    padding: 24px;
+    background: #fff;
+    box-shadow: -18px 0 50px rgba(16, 24, 40, .16);
+  }
+  .desktop-room-drawer header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 26px; }
+  .desktop-room-drawer textarea { min-height: 110px; }
+  .desktop-room-toggle { margin-top: 4px; padding: 12px; border: 1px solid #e2e7eb; border-radius: 8px; }
+  .desktop-drawer-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; margin-top: 10px; }
+}
