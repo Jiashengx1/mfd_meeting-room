@@ -19,7 +19,6 @@ class RegisterRequest(BaseModel):
     confirm_staff_id: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=100)
     department: str = Field(min_length=1, max_length=100)
-    security_answer: str = Field(min_length=1, max_length=100)
 
 
 class UserOut(BaseModel):

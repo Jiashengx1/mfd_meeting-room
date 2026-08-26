@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     secret_key: str = "dev-only-change-me"
     access_token_expire_days: int = 180
     backend_cors_origins: str = "http://localhost:5173"
-    registration_security_answer: str = "浙江大学"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

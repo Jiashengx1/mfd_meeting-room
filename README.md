@@ -5,7 +5,7 @@
 ## 功能范围
 
 - `staff.csv` 可手动导入用户，工号作为账号，初始密码等于工号，数据库存储密码哈希
-- 支持院内员工注册，注册角色固定为 `普通用户`，安全题答案由后端环境变量判断
+- 支持院内员工注册，注册角色固定为 `普通用户`
 - 用户角色来自 `staff.csv` 第四列：`管理员` 或 `普通用户`
 - 登录状态默认保持 180 天
 - 管理员维护会议室：新增、修改、启用、停用
@@ -107,7 +107,6 @@ DATABASE_URL=postgresql+psycopg://meeting_room:强数据库密码@db:5432/meetin
 SECRET_KEY=强随机字符串
 BACKEND_CORS_ORIGINS=https://你的域名
 VITE_API_BASE_URL=
-REGISTRATION_SECURITY_ANSWER=罗马琳达大学
 ```
 
 `VITE_API_BASE_URL` 留空表示生产环境使用同域 `/api`，由 Nginx 反向代理到后端。

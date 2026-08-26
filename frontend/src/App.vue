@@ -108,8 +108,7 @@ watch(hasOpenSheet, (open) => {
 
 const authMode = ref<'login' | 'register'>('login')
 const loginForm = reactive({ staff_id: '', password: '' })
-const registerForm = reactive({ staff_id: '', confirm_staff_id: '', name: '', department: '', security_answer: '' })
-const securityOptions = ['罗马琳达大学', '浙江大学', '浙江医学院', '广济医校']
+const registerForm = reactive({ staff_id: '', confirm_staff_id: '', name: '', department: '' })
 const roomOriginalActive = ref(true)
 const roomForm = reactive({ id: 0, name: '', location: '', capacity: 10, description: '', is_active: true })
 const bookingForm = reactive({
@@ -306,7 +305,6 @@ async function registerUser() {
       confirm_staff_id: registerForm.confirm_staff_id.trim(),
       name: registerForm.name.trim(),
       department: registerForm.department.trim(),
-      security_answer: registerForm.security_answer,
     })
     setToken(result.access_token)
     user.value = result.user
@@ -850,12 +848,6 @@ onMounted(async () => {
           <label><span>确认工号/ID <b class="required-star">*</b></span><input v-model="registerForm.confirm_staff_id" inputmode="numeric" autocomplete="off" required /></label>
           <label><span>姓名 <b class="required-star">*</b></span><input v-model="registerForm.name" autocomplete="name" required /></label>
           <label><span>科室 <b class="required-star">*</b></span><input v-model="registerForm.department" required /></label>
-          <label><span>我院是前五年由____大学协助管理？ <b class="required-star">*</b></span>
-            <select v-model="registerForm.security_answer" required>
-              <option disabled value="">请选择</option>
-              <option v-for="option in securityOptions" :key="option" :value="option">{{ option }}</option>
-            </select>
-          </label>
           <button class="primary" :disabled="loading">注册并登录</button>
           <button type="button" class="link-button" @click="authMode = 'login'; error = ''; notice = ''">返回登录</button>
           <p v-if="error" class="message error">{{ error }}</p>

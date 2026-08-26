@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.config import get_settings
 from app.models import User, UserRole
 from app.schemas import LoginRequest, RegisterRequest, TokenResponse, UserOut
 from app.security import create_access_token, hash_password, verify_password
@@ -30,8 +29,6 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> TokenRe
     confirm_staff_id = payload.confirm_staff_id.strip()
     if staff_id != confirm_staff_id:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="两次输入的工号不一致")
-    if payload.security_answer.strip() != get_settings().registration_security_answer:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="防护问题答案错误")
     existing = db.query(User).filter(User.staff_id == staff_id).one_or_none()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该工号已存在，请直接登录；登录密码与工号相同")
