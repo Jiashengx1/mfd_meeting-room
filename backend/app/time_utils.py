@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 ALLOWED_MINUTES = {0, 30}
 OPEN_HOUR = 7
-CLOSE_HOUR = 24
+CLOSE_HOUR = 18
 
 
 def now_shanghai() -> datetime:
@@ -49,9 +49,9 @@ def validate_range(day: date, start_time: str, end_time: str) -> tuple[datetime,
     if end_at.date() == day + timedelta(days=1) and end_at.time() != time(0, 0):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="预约不允许跨日期")
     open_at = datetime.combine(day, time(OPEN_HOUR, 0), tzinfo=SHANGHAI)
-    close_at = datetime.combine(day + timedelta(days=1), time(0, 0), tzinfo=SHANGHAI)
+    close_at = datetime.combine(day, time(CLOSE_HOUR, 0), tzinfo=SHANGHAI)
     if start_at < open_at or end_at > close_at:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="预约时间必须在 07:00-24:00 之间")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="预约时间必须在 07:00-18:00 之间")
     return start_at, end_at
 
 

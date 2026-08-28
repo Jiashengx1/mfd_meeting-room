@@ -12,7 +12,7 @@
 - 会议室按 `庆春`、`钱塘`、`大运河`、`绍兴` 四个固定院区分类，用户可跨院区查看和预约
 - 普通用户创建、查看、修改、取消自己的预约
 - 管理员查看、取消全部预约，维护会议室，并支持周期性预约
-- 预约禁止跨日期，时间粒度 30 分钟，可预约范围 `07:00-24:00`
+- 预约禁止跨日期，时间粒度 30 分钟，可预约范围 `07:00-18:00`
 - 后端进行预约冲突检查，PostgreSQL 排他约束防止并发重叠预约
 - 历史 Excel 登记表可清洗为 CSV 后导入数据库
 
@@ -210,7 +210,7 @@ scripts/clean_meeting_records.py
 执行清洗：
 
 ```bash
-python3 scripts/clean_meeting_records.py --campus 庆春
+python3 scripts/clean_meeting_records.py --campus qz
 ```
 
 输出文件：
@@ -224,7 +224,9 @@ scripts/data/cleaned/cleaning_report.csv
 当前清洗规则：
 
 - 每张 sheet 对应一个会议室
-- 必须通过 `--campus` 指定本次 Excel 所属院区，只接受 `庆春`、`钱塘`、`大运河`、`绍兴`
+- 必须通过 `--campus` 指定本次 Excel 所属院区代码
+- 代码映射：`qz` = 庆春，`qt` = 钱塘，`dyh` = 大运河，`sx` = 绍兴
+- Terminal 中只输入上述 ASCII 代码，生成的 CSV 仍使用中文院区标准值
 - 年份强制设为 `2026`
 - sheet `2号楼2楼第三会议室` 映射为 `第三会议室`
 - sheet `谈话室二` 映射为 `医务科谈话室2`

@@ -26,9 +26,14 @@ SHANGHAI = timezone(timedelta(hours=8))
 TITLE = "历史会议室使用记录"
 IMPORT_APPLICANT_STAFF_ID = "IMPORT"
 FORCE_YEAR = 2026
-CAMPUS_VALUES = ("庆春", "钱塘", "大运河", "绍兴")
+CAMPUS_ALIASES = {
+    "qz": "庆春",
+    "qt": "钱塘",
+    "dyh": "大运河",
+    "sx": "绍兴",
+}
 ROOM_OVERRIDES = {
-    "2号楼2楼第三会议室": {"name": "第三会议室", "location": "3号楼2楼", "capacity": "20", "description": ""},
+    "2号楼2楼第三会议室": {"name": "第三会议室", "location": "2号楼2楼", "capacity": "20", "description": ""},
     "谈话室二": {"name": "医务科谈话室2", "location": "5号楼2楼", "capacity": "10", "description": ""},
 }
 
@@ -277,7 +282,7 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="清洗会议室历史登记 Excel")
-    parser.add_argument("--campus", required=True, choices=CAMPUS_VALUES, help="本次 Excel 数据所属院区")
+    parser.add_argument("--campus", required=True, choices=CAMPUS_ALIASES, help="本次 Excel 数据所属院区代码")
     return parser.parse_args()
 
 
@@ -290,7 +295,7 @@ def main() -> None:
     report: list[dict[str, str]] = []
 
     for sheet_name, rows in sheets.items():
-        room, room_bookings, room_report = build_bookings(sheet_name, rows, args.campus)
+        room, room_bookings, room_report = build_bookings(sheet_name, rows, CAMPUS_ALIASES[args.campus])
         rooms.append(room)
         bookings.extend(room_bookings)
         report.extend(room_report)

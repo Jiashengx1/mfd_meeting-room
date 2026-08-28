@@ -523,22 +523,24 @@ h3 { font-size: 17px; margin-bottom: 8px; }
   .pc-schedule-head, .pc-schedule-row { min-width: 980px; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
   .pc-schedule-head { min-height: 46px; align-items: center; border-bottom: 1px solid #e2e7ed; background: #f8fafc; color: #65717d; font-size: 12px; font-weight: 700; }
   .pc-schedule-head > span { padding: 0 16px; }
-  .pc-timeline-hours { display: grid; grid-template-columns: repeat(18, 1fr); align-items: center; padding-right: 4px; }
-  .pc-timeline-hours span { transform: translateX(-50%); text-align: center; }
-  .pc-timeline-hours span:first-child { transform: none; text-align: left; }
-  .pc-timeline-hours span:last-child { transform: translateX(-100%); text-align: right; }
+  .pc-timeline-hours { position: relative; height: 100%; margin: 0 4px; }
+  .pc-timeline-hours span { position: absolute; top: 50%; transform: translate(-50%, -50%); text-align: center; }
+  .pc-timeline-hours span:first-child { transform: translateY(-50%); text-align: left; }
+  .pc-timeline-hours span:last-child { transform: translate(-100%, -50%); text-align: right; }
   .pc-schedule-row { min-height: 96px; }
   .pc-schedule-row:hover { background: #fbfcfe; }
   .pc-schedule-row + .pc-schedule-row { border-top: 1px solid #e5e9ec; }
   .pc-room-summary { min-width: 0; display: grid; align-content: center; gap: 5px; padding: 14px 16px; border-right: 1px solid #e5e9ec; }
   .pc-room-summary strong { overflow-wrap: anywhere; font-size: 15px; }
   .pc-room-summary span, .pc-room-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6c7680; font-size: 12px; }
-  .pc-slot-grid { display: grid; grid-template-columns: repeat(34, minmax(21px, 1fr)); align-items: stretch; padding: 20px 4px; }
+  .pc-slot-grid { display: grid; grid-template-columns: repeat(22, minmax(21px, 1fr)); align-items: stretch; padding: 20px 4px; }
   .pc-slot-grid button { position: relative; min-width: 0; min-height: 52px; padding: 0; overflow: hidden; border: 0; border-right: 1px solid #e2e6e9; border-radius: 0; background: #fff; }
   .pc-slot-grid button:first-child { border-left: 1px solid #e2e6e9; }
   .pc-slot-grid button:hover:not(:disabled):not(.occupied) { background: #edf4ff; }
   .pc-slot-grid button.expired { background: #e8ebee; cursor: not-allowed; opacity: 1; }
-  .pc-slot-grid button.occupied { background: #fff0d8; border-color: #efd7af; cursor: pointer; }
+  .pc-slot-grid button.occupied { background: #fff0d8; border-right-color: transparent; cursor: pointer; }
+  .pc-slot-grid button.occupied.booking-start { box-shadow: inset 1px 0 #efd7af; }
+  .pc-slot-grid button.occupied.booking-end { border-right-color: #efd7af; }
   .pc-slot-grid button.selected { z-index: 2; background: #dceaff; box-shadow: inset 0 0 0 1px #1e73ff; }
   .pc-booking-preview { position: fixed; z-index: 60; width: min(288px, calc(100vw - 24px)); display: grid; gap: 6px; padding: 12px 14px; border: 1px solid #303b47; border-radius: 7px; background: #1f2933; color: #fff; box-shadow: 0 10px 28px rgba(16, 24, 40, .24); pointer-events: none; }
   .pc-booking-preview.above { transform: translateY(-100%); }

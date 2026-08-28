@@ -201,10 +201,21 @@ const mobileTitle = computed(() => {
   if (mobileAdminView.value === 'stats') return '统计信息'
   return '管理后台'
 })
-const hourOptions = Array.from({ length: 17 }, (_, i) => String(i + 7).padStart(2, '0'))
-const endHourOptions = Array.from({ length: 17 }, (_, i) => String(i + 8).padStart(2, '0'))
+const OPEN_HOUR = 7
+const CLOSE_HOUR = 18
+const SLOT_MINUTES = 30
+const SLOT_COUNT = (CLOSE_HOUR - OPEN_HOUR) * (60 / SLOT_MINUTES)
+const SCHEDULE_MINUTES = (CLOSE_HOUR - OPEN_HOUR) * 60
+const hourOptions = Array.from({ length: CLOSE_HOUR - OPEN_HOUR }, (_, i) => String(i + OPEN_HOUR).padStart(2, '0'))
+const endHourOptions = Array.from({ length: CLOSE_HOUR - OPEN_HOUR }, (_, i) => String(i + OPEN_HOUR + 1).padStart(2, '0'))
 const minuteOptions = ['00', '30']
-const desktopHours = Array.from({ length: 18 }, (_, index) => index + 7)
+const desktopHours = Array.from({ length: CLOSE_HOUR - OPEN_HOUR + 1 }, (_, index) => index + OPEN_HOUR)
+watch(() => bookingForm.end_hour, (hour) => {
+  if (Number(hour) === CLOSE_HOUR) bookingForm.end_minute = '00'
+})
+watch(() => recurringForm.end_hour, (hour) => {
+  if (Number(hour) === CLOSE_HOUR) recurringForm.end_minute = '00'
+})
 const normalMyBookings = computed(() => myBookings.value.filter((booking) => !booking.recurring_series_id))
 const upcoming = computed(() => normalMyBookings.value.filter((booking) => booking.status === 'active' && new Date(booking.end_at) > new Date()))
 const finished = computed(() => normalMyBookings.value.filter((booking) => booking.status === 'active' && new Date(booking.end_at) <= new Date()))
@@ -285,9 +296,9 @@ function recurringCampus(series: RecurringSeries) {
 
 const mobileSlots = computed(() => {
   const bookings = selectedRoomSchedule.value?.bookings || []
-  return Array.from({ length: 34 }, (_, index) => {
-    const start = 7 * 60 + index * 30
-    const end = start + 30
+  return Array.from({ length: SLOT_COUNT }, (_, index) => {
+    const start = OPEN_HOUR * 60 + index * SLOT_MINUTES
+    const end = start + SLOT_MINUTES
     const occupiedBy = bookings.find((booking) => {
       if (bookingForm.id && booking.id === bookingForm.id) return false
       const bookingStart = localMinutes(booking.start_at)
@@ -518,14 +529,13 @@ function minutesToText(value: number) {
 function slotIndexForTime(value: string) {
   const [hour, minute] = value.split(':').map(Number)
   const minutes = hour * 60 + minute
-  return Math.max(0, Math.min(33, Math.floor((minutes - 7 * 60) / 30)))
+  return Math.max(0, Math.min(SLOT_COUNT - 1, Math.floor((minutes - OPEN_HOUR * 60) / SLOT_MINUTES)))
 }
 
 function slotEndIndexForEndTime(value: string) {
-  if (value === '24:00') return 33
   const [hour, minute] = value.split(':').map(Number)
-  const minutes = hour * 60 + minute - 30
-  return Math.max(0, Math.min(33, Math.floor((minutes - 7 * 60) / 30)))
+  const minutes = hour * 60 + minute - SLOT_MINUTES
+  return Math.max(0, Math.min(SLOT_COUNT - 1, Math.floor((minutes - OPEN_HOUR * 60) / SLOT_MINUTES)))
 }
 
 function bookingOccupantText(booking: Booking) {
@@ -599,8 +609,8 @@ function expiredTimelineStyle() {
   const timeText = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }).format(new Date(nowTick.value))
   const [hour, minute] = timeText.split(':').map(Number)
   const nowMinutes = hour * 60 + minute
-  const expiredUntil = Math.max(7 * 60, Math.min(24 * 60, Math.floor(nowMinutes / 30) * 30))
-  const width = Math.max(0, expiredUntil - 7 * 60) / (17 * 60) * 100
+  const expiredUntil = Math.max(OPEN_HOUR * 60, Math.min(CLOSE_HOUR * 60, Math.floor(nowMinutes / SLOT_MINUTES) * SLOT_MINUTES))
+  const width = Math.max(0, expiredUntil - OPEN_HOUR * 60) / SCHEDULE_MINUTES * 100
   return { width: `${width}%` }
 }
 
@@ -644,19 +654,19 @@ function chooseSlot(index: number) {
 
 function selectedSlotText() {
   if (selectedSlotStart.value === null || selectedSlotEnd.value === null) return '请选择时间'
-  return `${minutesToText(7 * 60 + selectedSlotStart.value * 30)}-${minutesToText(7 * 60 + (selectedSlotEnd.value + 1) * 30)}`
+  return `${minutesToText(OPEN_HOUR * 60 + selectedSlotStart.value * SLOT_MINUTES)}-${minutesToText(OPEN_HOUR * 60 + (selectedSlotEnd.value + 1) * SLOT_MINUTES)}`
 }
 
 function applySelectedSlotsToForm() {
   if (selectedSlotStart.value === null || selectedSlotEnd.value === null) return false
-  const startText = minutesToText(7 * 60 + selectedSlotStart.value * 30)
-  const endText = minutesToText(7 * 60 + (selectedSlotEnd.value + 1) * 30)
+  const startText = minutesToText(OPEN_HOUR * 60 + selectedSlotStart.value * SLOT_MINUTES)
+  const endText = minutesToText(OPEN_HOUR * 60 + (selectedSlotEnd.value + 1) * SLOT_MINUTES)
   const [startHour, startMinute] = startText.split(':')
   const [endHour, endMinute] = endText.split(':')
   bookingForm.start_hour = startHour
   bookingForm.start_minute = startMinute
   bookingForm.end_hour = endHour
-  bookingForm.end_minute = endHour === '24' ? '00' : endMinute
+  bookingForm.end_minute = endMinute
   return true
 }
 
@@ -749,8 +759,8 @@ function prepareBooking(room?: Room, booking?: Booking) {
     bookingForm.start_hour = formatLocalTime(booking.start_at).slice(0, 2)
     bookingForm.start_minute = formatLocalTime(booking.start_at).slice(3, 5)
     const endText = formatLocalTime(booking.end_at)
-    bookingForm.end_hour = endText === '00:00' && booking.end_at.slice(0, 10) !== booking.start_at.slice(0, 10) ? '24' : endText.slice(0, 2)
-    bookingForm.end_minute = bookingForm.end_hour === '24' ? '00' : endText.slice(3, 5)
+    bookingForm.end_hour = endText.slice(0, 2)
+    bookingForm.end_minute = endText.slice(3, 5)
     selectedSlotStart.value = slotIndexForTime(`${bookingForm.start_hour}:${bookingForm.start_minute}`)
     selectedSlotEnd.value = slotEndIndexForEndTime(`${bookingForm.end_hour}:${bookingForm.end_minute}`)
     bookingStep.value = 'details'
@@ -774,7 +784,7 @@ async function saveBooking() {
       room_id: Number(bookingForm.room_id),
       booking_date: bookingForm.booking_date,
       start_time: `${bookingForm.start_hour}:${bookingForm.start_minute}`,
-      end_time: `${bookingForm.end_hour}:${bookingForm.end_hour === '24' ? '00' : bookingForm.end_minute}`,
+      end_time: `${bookingForm.end_hour}:${Number(bookingForm.end_hour) === CLOSE_HOUR ? '00' : bookingForm.end_minute}`,
       title: bookingForm.title.trim(),
       attendee_count: Number(bookingForm.attendee_count),
       note: bookingForm.note.trim() || null,
@@ -885,7 +895,7 @@ function recurringPayload() {
     end_date: recurringForm.end_date,
     weekdays: recurringForm.weekdays,
     start_time: `${recurringForm.start_hour}:${recurringForm.start_minute}`,
-    end_time: `${recurringForm.end_hour}:${recurringForm.end_hour === '24' ? '00' : recurringForm.end_minute}`,
+    end_time: `${recurringForm.end_hour}:${Number(recurringForm.end_hour) === CLOSE_HOUR ? '00' : recurringForm.end_minute}`,
     title: recurringForm.title.trim(),
     attendee_count: Number(recurringForm.attendee_count),
     note: recurringForm.note.trim() || null,
@@ -1013,9 +1023,9 @@ function desktopSlotExpired(slotEndMinutes: number) {
 }
 
 function desktopSlotsForRoom(item: DaySchedule['rooms'][number]) {
-  return Array.from({ length: 34 }, (_, index) => {
-    const start = 7 * 60 + index * 30
-    const end = start + 30
+  const slots = Array.from({ length: SLOT_COUNT }, (_, index) => {
+    const start = OPEN_HOUR * 60 + index * SLOT_MINUTES
+    const end = start + SLOT_MINUTES
     const occupiedBy = item.bookings.find((booking) => {
       if (bookingForm.id && booking.id === bookingForm.id) return false
       const bookingStart = localMinutes(booking.start_at)
@@ -1027,6 +1037,14 @@ function desktopSlotsForRoom(item: DaySchedule['rooms'][number]) {
       occupiedBy,
       expired: desktopSlotExpired(end),
       selected: selectedRoom.value?.id === item.room.id && isSlotSelected(index),
+    }
+  })
+  return slots.map((slot, index) => {
+    const bookingId = slot.occupiedBy?.id
+    return {
+      ...slot,
+      bookingStart: !!bookingId && slots[index - 1]?.occupiedBy?.id !== bookingId,
+      bookingEnd: !!bookingId && slots[index + 1]?.occupiedBy?.id !== bookingId,
     }
   })
 }
@@ -1044,8 +1062,8 @@ function initializeDesktopBooking(room: Room, booking?: Booking) {
     bookingForm.start_hour = formatLocalTime(booking.start_at).slice(0, 2)
     bookingForm.start_minute = formatLocalTime(booking.start_at).slice(3, 5)
     const endText = formatLocalTime(booking.end_at)
-    bookingForm.end_hour = endText === '00:00' && booking.end_at.slice(0, 10) !== booking.start_at.slice(0, 10) ? '24' : endText.slice(0, 2)
-    bookingForm.end_minute = bookingForm.end_hour === '24' ? '00' : endText.slice(3, 5)
+    bookingForm.end_hour = endText.slice(0, 2)
+    bookingForm.end_minute = endText.slice(3, 5)
     selectedSlotStart.value = slotIndexForTime(`${bookingForm.start_hour}:${bookingForm.start_minute}`)
     selectedSlotEnd.value = slotEndIndexForEndTime(`${bookingForm.end_hour}:${bookingForm.end_minute}`)
   } else {
@@ -1153,9 +1171,10 @@ function bookingBarStyle(booking: Booking) {
   const endParts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }).format(end).split(':')
   const startValue = Number(startParts[0]) + Number(startParts[1]) / 60
   let endValue = Number(endParts[0]) + Number(endParts[1]) / 60
-  if (endValue === 0 && dateInputInShanghai(end) !== dateInputInShanghai(start)) endValue = 24
-  const left = Math.max(0, Math.min(17, startValue - 7)) / 17 * 100
-  const width = Math.max(0.8, Math.min(17, endValue - 7) / 17 * 100 - left)
+  if (endValue === 0 && dateInputInShanghai(end) !== dateInputInShanghai(start)) endValue = CLOSE_HOUR
+  const scheduleHours = CLOSE_HOUR - OPEN_HOUR
+  const left = Math.max(0, Math.min(scheduleHours, startValue - OPEN_HOUR)) / scheduleHours * 100
+  const width = Math.max(0.8, Math.min(scheduleHours, endValue - OPEN_HOUR) / scheduleHours * 100 - left)
   return { left: `${left}%`, width: `${width}%` }
 }
 
@@ -1173,7 +1192,7 @@ onMounted(async () => {
         <h1>{{ authMode === 'login' ? '会议室登记' : '员工注册' }}</h1>
         <form v-if="authMode === 'login'" @submit.prevent="login" class="form-stack">
           <label>工号<input v-model="loginForm.staff_id" autocomplete="username" inputmode="numeric" /></label>
-          <label>密码<input v-model="loginForm.password" type="password" autocomplete="current-password" /></label>
+          <label>密码<input v-model="loginForm.password" type="password" autocomplete="current-password" placeholder="同工号" /></label>
           <button class="primary" :disabled="loading">登录</button>
           <button type="button" class="link-button" @click="authMode = 'register'; error = ''; notice = ''">员工注册</button>
           <p v-if="error" class="message error">{{ error }}</p>
@@ -1276,7 +1295,7 @@ onMounted(async () => {
                 <span class="expired-segment" :style="expiredTimelineStyle()"></span>
                 <span v-for="booking in item.bookings" :key="booking.id" class="busy-segment" :style="bookingBarStyle(booking)"></span>
               </div>
-              <div class="timeline-hours"><span v-for="hour in [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]" :key="hour">{{ hour }}</span></div>
+              <div class="timeline-hours"><span v-for="hour in desktopHours" :key="hour">{{ hour }}</span></div>
             </div>
           </article>
         </section>
@@ -1539,7 +1558,7 @@ onMounted(async () => {
                 <div class="weekday-grid">
                   <button v-for="item in weekdayOptions" :key="item.value" type="button" :class="{ active: recurringForm.weekdays.includes(item.value) }" @click="toggleRecurringWeekday(item.value)">{{ item.label }}</button>
                 </div>
-                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="h in hourOptions" :key="h">{{ h }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="h in endHourOptions" :key="h">{{ h }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="recurringForm.end_hour === '24'"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label></div>
+                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="h in hourOptions" :key="h">{{ h }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="h in endHourOptions" :key="h">{{ h }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="Number(recurringForm.end_hour) === CLOSE_HOUR"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label></div>
                 <label>部门<input :value="user?.department || ''" readonly /></label>
                 <label>使用人<input :value="user?.name || ''" readonly /></label>
                 <label><span>会议名称 <b class="required-star">*</b></span><input v-model="recurringForm.title" required /></label>
@@ -1626,7 +1645,7 @@ onMounted(async () => {
                     <button @click="desktopGoToday">今天</button>
                     <button :disabled="scheduleRefreshing" @click="refreshScheduleWithSkeleton"><RefreshCcw :size="17" />{{ scheduleRefreshing ? '刷新中' : '刷新' }}</button>
                   </div>
-                  <span v-if="selectedSlotStart !== null && selectedRoom && !desktopBookingDrawerOpen" class="pc-selection-hint">{{ selectedRoom.name }} · 起点 {{ minutesToText(7 * 60 + selectedSlotStart * 30) }}，请再选择结束时段</span>
+                  <span v-if="selectedSlotStart !== null && selectedRoom && !desktopBookingDrawerOpen" class="pc-selection-hint">{{ selectedRoom.name }} · 起点 {{ minutesToText(OPEN_HOUR * 60 + selectedSlotStart * SLOT_MINUTES) }}，请再选择结束时段</span>
                 </div>
 
                 <div v-if="scheduleRefreshing" class="pc-loading-band">正在刷新会议室状态</div>
@@ -1634,7 +1653,7 @@ onMounted(async () => {
                 <div v-else class="pc-schedule-table">
                   <div class="pc-schedule-head">
                     <span>会议室</span>
-                    <div class="pc-timeline-hours"><span v-for="hour in desktopHours" :key="hour">{{ hour }}</span></div>
+                    <div class="pc-timeline-hours"><span v-for="hour in desktopHours" :key="hour" :style="{ left: `${((hour - OPEN_HOUR) / (CLOSE_HOUR - OPEN_HOUR)) * 100}%` }">{{ hour }}</span></div>
                   </div>
                   <article v-for="item in visibleScheduleRooms" :key="item.room.id" class="pc-schedule-row">
                     <div class="pc-room-summary">
@@ -1646,10 +1665,10 @@ onMounted(async () => {
                       <button
                         v-for="slot in desktopSlotsForRoom(item)"
                         :key="slot.index"
-                        :class="{ occupied: !!slot.occupiedBy, expired: slot.expired, selected: slot.selected }"
+                        :class="{ occupied: !!slot.occupiedBy, expired: slot.expired, selected: slot.selected, 'booking-start': slot.bookingStart, 'booking-end': slot.bookingEnd }"
                         :disabled="slot.expired"
-                        :title="slot.occupiedBy ? undefined : slot.expired ? '已过期' : `${minutesToText(7 * 60 + slot.index * 30)}-${minutesToText(7 * 60 + (slot.index + 1) * 30)}`"
-                        :aria-label="slot.occupiedBy ? bookingOccupantText(slot.occupiedBy) : slot.expired ? '已过期' : `${minutesToText(7 * 60 + slot.index * 30)}-${minutesToText(7 * 60 + (slot.index + 1) * 30)}`"
+                        :title="slot.occupiedBy ? undefined : slot.expired ? '已过期' : `${minutesToText(OPEN_HOUR * 60 + slot.index * SLOT_MINUTES)}-${minutesToText(OPEN_HOUR * 60 + (slot.index + 1) * SLOT_MINUTES)}`"
+                        :aria-label="slot.occupiedBy ? bookingOccupantText(slot.occupiedBy) : slot.expired ? '已过期' : `${minutesToText(OPEN_HOUR * 60 + slot.index * SLOT_MINUTES)}-${minutesToText(OPEN_HOUR * 60 + (slot.index + 1) * SLOT_MINUTES)}`"
                         @pointerenter="slot.occupiedBy && showDesktopBookingPreview($event, slot.occupiedBy)"
                         @pointerleave="hideDesktopBookingPreview"
                         @focus="slot.occupiedBy && showDesktopBookingPreview($event, slot.occupiedBy)"
@@ -1799,7 +1818,7 @@ onMounted(async () => {
               <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="bookingForm.room_id" required><optgroup v-for="group in recurringRoomsByCampus" :key="group.campus" :label="group.campus"><option v-for="room in group.rooms" :key="room.id" :value="room.id">{{ room.name }}</option></optgroup></select></label>
               <div class="pc-readonly-grid"><label>部门<input :value="user?.department || ''" readonly /></label><label>使用人<input :value="user?.name || ''" readonly /></label></div>
               <label><span>日期 <b class="required-star">*</b></span><input v-model="bookingForm.booking_date" type="date" required /></label>
-              <div class="time-grid"><label>开始小时<select v-model="bookingForm.start_hour"><option v-for="hour in hourOptions" :key="hour">{{ hour }}</option></select></label><label>开始分钟<select v-model="bookingForm.start_minute"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label><label>结束小时<select v-model="bookingForm.end_hour"><option v-for="hour in endHourOptions" :key="hour">{{ hour }}</option></select></label><label>结束分钟<select v-model="bookingForm.end_minute" :disabled="bookingForm.end_hour === '24'"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label></div>
+              <div class="time-grid"><label>开始小时<select v-model="bookingForm.start_hour"><option v-for="hour in hourOptions" :key="hour">{{ hour }}</option></select></label><label>开始分钟<select v-model="bookingForm.start_minute"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label><label>结束小时<select v-model="bookingForm.end_hour"><option v-for="hour in endHourOptions" :key="hour">{{ hour }}</option></select></label><label>结束分钟<select v-model="bookingForm.end_minute" :disabled="Number(bookingForm.end_hour) === CLOSE_HOUR"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label></div>
               <label><span>会议名称 <b class="required-star">*</b></span><input v-model="bookingForm.title" required /></label>
               <label><span>参会人数 <b class="required-star">*</b></span><input v-model.number="bookingForm.attendee_count" type="number" min="1" required /></label>
               <label>备注<textarea v-model="bookingForm.note" rows="4" /></label>
@@ -1839,7 +1858,7 @@ onMounted(async () => {
                 <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="recurringForm.room_id" required><optgroup v-for="group in recurringRoomsByCampus" :key="group.campus" :label="group.campus"><option v-for="room in group.rooms" :key="room.id" :value="room.id">{{ room.name }}</option></optgroup></select></label>
                 <div class="pc-readonly-grid"><label><span>开始日期 <b class="required-star">*</b></span><input v-model="recurringForm.start_date" type="date" required /></label><label><span>结束日期 <b class="required-star">*</b></span><input v-model="recurringForm.end_date" type="date" required /></label></div>
                 <div class="weekday-grid"><button v-for="item in weekdayOptions" :key="item.value" type="button" :class="{ active: recurringForm.weekdays.includes(item.value) }" @click="toggleRecurringWeekday(item.value)">{{ item.label }}</button></div>
-                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="hour in hourOptions" :key="hour">{{ hour }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="hour in endHourOptions" :key="hour">{{ hour }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="recurringForm.end_hour === '24'"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label></div>
+                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="hour in hourOptions" :key="hour">{{ hour }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="hour in endHourOptions" :key="hour">{{ hour }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="Number(recurringForm.end_hour) === CLOSE_HOUR"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label></div>
                 <div class="pc-readonly-grid"><label>部门<input :value="user?.department || ''" readonly /></label><label>使用人<input :value="user?.name || ''" readonly /></label></div>
                 <label><span>会议名称 <b class="required-star">*</b></span><input v-model="recurringForm.title" required /></label><label><span>参会人数 <b class="required-star">*</b></span><input v-model.number="recurringForm.attendee_count" type="number" min="1" required /></label><label>备注<textarea v-model="recurringForm.note" rows="3" /></label>
                 <div class="pc-drawer-actions"><button class="primary" :disabled="loading || recurringForm.weekdays.length === 0 || !recurringForm.room_id">预览</button><button type="button" :disabled="loading || !recurringResult" @click="createDesktopRecurringBookings">确认创建</button></div>
