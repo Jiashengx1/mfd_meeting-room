@@ -344,7 +344,7 @@ h3 { font-size: 17px; margin-bottom: 8px; }
 .sheet-room-head p { display: flex; align-items: center; gap: 6px; padding: 0 18px; color: #6f7378; font-size: 17px; margin: 0; }
 .sheet-form { padding-bottom: 16px; }
 .sheet-submit { min-height: 52px; border-radius: 26px; font-size: 17px; }
-.manual-sheet { padding-bottom: max(26px, env(safe-area-inset-bottom)); }
+.manual-sheet { max-height: 92vh; padding-bottom: max(26px, env(safe-area-inset-bottom)); }
 .manual-content { margin: 0 -18px; }
 .manual-section { padding: 4px 18px 18px; border-bottom: 1px solid #edf0f3; }
 .manual-section + .manual-section { padding-top: 18px; }
