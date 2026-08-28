@@ -91,6 +91,7 @@ const adminBookingCampus = ref<CampusFilter>('all')
 const adminRoomStatus = ref<RoomStatusFilter>('all')
 const adminRoomCampus = ref<CampusFilter>('all')
 const mobileRoomSheetOpen = ref(false)
+const manualOpen = ref(false)
 const recurringSheetOpen = ref(false)
 const recurringMode = ref<'manage' | 'create' | 'cancel'>('manage')
 const recurringResult = ref<RecurringBookingResult | null>(null)
@@ -119,7 +120,7 @@ let sheetStartY = 0
 let activeSheetClose: (() => void) | null = null
 let lockedScrollY = 0
 
-const hasOpenSheet = computed(() => mobileBookingOpen.value || desktopBookingDrawerOpen.value || desktopRecurringDrawerOpen.value || !!detailBooking.value || mobileRoomSheetOpen.value || recurringSheetOpen.value)
+const hasOpenSheet = computed(() => manualOpen.value || mobileBookingOpen.value || desktopBookingDrawerOpen.value || desktopRecurringDrawerOpen.value || !!detailBooking.value || mobileRoomSheetOpen.value || recurringSheetOpen.value)
 
 watch(desktopView, (view) => localStorage.setItem(DESKTOP_VIEW_KEY, view))
 
@@ -416,6 +417,7 @@ async function registerUser() {
 function logout() {
   setToken(null)
   user.value = null
+  manualOpen.value = false
   detailBooking.value = null
   mobileRoomSheetOpen.value = false
   mobileAdminView.value = 'home'
@@ -680,6 +682,10 @@ function nextBookingStep() {
 
 function closeMobileBooking() {
   mobileBookingOpen.value = false
+}
+
+function closeManual() {
+  manualOpen.value = false
 }
 
 function closeDetailSheet() {
@@ -1220,13 +1226,13 @@ onMounted(async () => {
 
 
         <section v-show="activeTab === 'home'" class="mobile-home">
-          <div class="mobile-hero">
+          <button type="button" class="mobile-hero" aria-label="打开使用手册" @click="manualOpen = true">
             <div>
-              <strong>医务科会议室</strong>
-              <span>如有技术问题联系许家晟662441</span>
+              <strong>使用手册</strong>
+              <span>医务科会议室</span>
             </div>
             <MonitorUp :size="78" />
-          </div>
+          </button>
           <div class="mobile-menu-card">
             <button @click="activeTab = 'schedule'">
               <CalendarCheck :size="32" />
@@ -1436,6 +1442,51 @@ onMounted(async () => {
             <button class="primary wide-button" :disabled="loading" @click="refreshAdminStats">{{ loading ? '刷新中' : '刷新' }}</button>
           </section>
         </section>
+
+        <div v-if="manualOpen" class="sheet-mask" @click.self="closeManual">
+          <section class="mobile-sheet manual-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeManual)" @touchstart.prevent="startSheetTouchDrag($event, closeManual)"></div>
+            <button class="sheet-close" title="关闭" @click="closeManual"><X :size="22" /></button>
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeManual)" @touchstart.prevent="startSheetTouchDrag($event, closeManual)">
+              <h2>使用手册</h2>
+              <p>医务科会议室</p>
+            </div>
+            <div class="manual-content">
+              <section class="manual-section">
+                <div class="manual-section-title"><CalendarCheck :size="20" /><h3>快速预约</h3></div>
+                <ol>
+                  <li>在首页进入“预定会议室”，选择院区和日期。</li>
+                  <li>点击会议室，选择一个或多个连续的 30 分钟空闲时段。</li>
+                  <li>点击“下一步”，填写会议名称、参会人数后提交。</li>
+                </ol>
+              </section>
+              <section class="manual-section">
+                <div class="manual-section-title"><CalendarDays :size="20" /><h3>预约规则</h3></div>
+                <ul>
+                  <li>可预约时间为 07:00-18:00，时间粒度为 30 分钟。</li>
+                  <li>不能选择已过期或已占用时段，预约不允许跨日期。</li>
+                  <li>连续选择不能跨过已占用时段。</li>
+                </ul>
+              </section>
+              <section class="manual-section">
+                <div class="manual-section-title"><UserCheck :size="20" /><h3>我的预定</h3></div>
+                <ul>
+                  <li>可查看周期会议、即将开始、已结束和已取消的预约。</li>
+                  <li>未开始的预约可查看会议详情或释放会议室。</li>
+                  <li>释放会议室会取消该条预约，操作前需要确认。</li>
+                </ul>
+              </section>
+              <section v-if="isAdmin" class="manual-section">
+                <div class="manual-section-title"><Shield :size="20" /><h3>管理员功能</h3></div>
+                <ul>
+                  <li>可使用预约管理、会议室管理、周期预约管理和统计信息。</li>
+                  <li>取消预约、停用会议室等操作均需二次确认。</li>
+                </ul>
+              </section>
+              <div class="manual-support"><MonitorUp :size="20" /><span>如有技术问题，请联系许家晟 662441</span></div>
+            </div>
+          </section>
+        </div>
 
         <div v-if="mobileRoomSheetOpen" class="sheet-mask" @click.self="closeMobileRoomSheet">
           <section class="mobile-sheet room-edit-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
