@@ -331,9 +331,12 @@ h3 { font-size: 17px; margin-bottom: 8px; }
 }
 .detail-list span { color: #8a8f96; font-size: 15px; }
 .detail-list strong { color: #181d22; font-size: 16px; font-weight: 650; overflow-wrap: anywhere; }
-.sheet-mask { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.38); display: flex; align-items: flex-end; overscroll-behavior: contain; }
-.mobile-sheet { width: 100%; max-height: 88vh; overflow: auto; background: #fff; border-radius: 24px 24px 0 0; padding: 14px 18px 24px; position: relative; transition: transform .18s ease; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.mobile-sheet.dragging { transition: none; }
+.sheet-mask { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.38); display: flex; align-items: flex-end; overscroll-behavior: contain; animation: sheet-mask-enter 180ms ease-out; transition: opacity 220ms ease; }
+.sheet-mask.closing { opacity: 0; }
+.mobile-sheet { width: 100%; max-height: 88vh; overflow: auto; background: #fff; border-radius: 24px 24px 0 0; padding: 14px 18px 24px; position: relative; transform: translate3d(0, 0, 0); backface-visibility: hidden; animation: sheet-enter 240ms cubic-bezier(.22, 1, .36, 1); transition: transform 240ms cubic-bezier(.22, 1, .36, 1); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.mobile-sheet.dragging { transition: none; user-select: none; }
+@keyframes sheet-mask-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-enter { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
 .sheet-handle { width: 42px; height: 5px; border-radius: 999px; background: #d7dbe0; margin: 0 auto 18px; cursor: grab; touch-action: none; }
 .sheet-close { position: absolute; right: 12px; top: 10px; width: 42px; padding: 0; border: 0; background: transparent; }
 .sheet-room-head { padding: 0 0 14px; border-bottom: 8px solid #f2f3f6; margin: 0 -18px 14px; touch-action: none; }

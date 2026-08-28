@@ -114,10 +114,17 @@ const selectedRoom = ref<Room | null>(null)
 const selectedSlotStart = ref<number | null>(null)
 const selectedSlotEnd = ref<number | null>(null)
 const detailBooking = ref<Booking | null>(null)
-const sheetDragY = ref(0)
 const sheetDragging = ref(false)
 let sheetStartY = 0
+let sheetLastY = 0
+let sheetLastTime = 0
+let sheetVelocity = 0
+let sheetPendingY = 0
+let activeSheetElement: HTMLElement | null = null
 let activeSheetClose: (() => void) | null = null
+let activeSheetPointerId: number | null = null
+let sheetFrame: number | null = null
+let sheetSettleTimer: number | null = null
 let lockedScrollY = 0
 
 const hasOpenSheet = computed(() => manualOpen.value || mobileBookingOpen.value || desktopBookingDrawerOpen.value || desktopRecurringDrawerOpen.value || !!detailBooking.value || mobileRoomSheetOpen.value || recurringSheetOpen.value)
@@ -692,62 +699,90 @@ function closeDetailSheet() {
   detailBooking.value = null
 }
 
-function sheetDragStyle() {
-  return { transform: `translateY(${sheetDragY.value}px)` }
-}
-
 function startSheetPointerDrag(event: PointerEvent, close: () => void) {
   if (event.pointerType === 'mouse' && event.button !== 0) return
-  sheetStartY = event.clientY
-  beginSheetDrag(close)
-  window.addEventListener('pointermove', onSheetPointerDrag)
-  window.addEventListener('pointerup', endSheetPointerDrag, { once: true })
-  window.addEventListener('pointercancel', endSheetPointerDrag, { once: true })
-}
-
-function startSheetTouchDrag(event: TouchEvent, close: () => void) {
-  const touch = event.touches[0]
-  if (!touch) return
-  sheetStartY = touch.clientY
-  beginSheetDrag(close)
-  window.addEventListener('touchmove', onSheetTouchDrag, { passive: false })
-  window.addEventListener('touchend', endSheetTouchDrag, { once: true })
-  window.addEventListener('touchcancel', endSheetTouchDrag, { once: true })
-}
-
-function beginSheetDrag(close: () => void) {
+  if (activeSheetPointerId !== null) return
+  const sheet = (event.currentTarget as HTMLElement).closest<HTMLElement>('.mobile-sheet')
+  if (!sheet) return
+  if (sheetSettleTimer !== null) {
+    window.clearTimeout(sheetSettleTimer)
+    sheetSettleTimer = null
+  }
+  activeSheetPointerId = event.pointerId
+  activeSheetElement = sheet
   activeSheetClose = close
+  sheetStartY = event.clientY
+  sheetLastY = event.clientY
+  sheetLastTime = event.timeStamp
+  sheetVelocity = 0
+  sheetPendingY = 0
   sheetDragging.value = true
-  sheetDragY.value = 0
+  sheet.getAnimations().forEach((animation) => animation.cancel())
+  sheet.style.transition = 'none'
+  sheet.style.willChange = 'transform'
+  window.addEventListener('pointermove', onSheetPointerDrag, { passive: false })
+  window.addEventListener('pointerup', endSheetPointerDrag)
+  window.addEventListener('pointercancel', endSheetPointerDrag)
 }
 
 function onSheetPointerDrag(event: PointerEvent) {
-  sheetDragY.value = Math.max(0, event.clientY - sheetStartY)
-}
-
-function onSheetTouchDrag(event: TouchEvent) {
-  const touch = event.touches[0]
-  if (!touch) return
+  if (event.pointerId !== activeSheetPointerId || !activeSheetElement) return
   event.preventDefault()
-  sheetDragY.value = Math.max(0, touch.clientY - sheetStartY)
+  const elapsed = Math.max(1, event.timeStamp - sheetLastTime)
+  const instantVelocity = (event.clientY - sheetLastY) / elapsed
+  sheetVelocity = sheetVelocity * 0.65 + instantVelocity * 0.35
+  sheetLastY = event.clientY
+  sheetLastTime = event.timeStamp
+  sheetPendingY = Math.max(0, event.clientY - sheetStartY)
+  if (sheetFrame !== null) return
+  sheetFrame = window.requestAnimationFrame(() => {
+    sheetFrame = null
+    if (activeSheetElement) activeSheetElement.style.transform = `translate3d(0, ${sheetPendingY}px, 0)`
+  })
 }
 
-function endSheetPointerDrag() {
+function endSheetPointerDrag(event: PointerEvent) {
+  if (event.pointerId !== activeSheetPointerId) return
   window.removeEventListener('pointermove', onSheetPointerDrag)
-  endSheetDrag()
-}
-
-function endSheetTouchDrag() {
-  window.removeEventListener('touchmove', onSheetTouchDrag)
-  endSheetDrag()
-}
-
-function endSheetDrag() {
-  const shouldClose = sheetDragY.value > 80
+  window.removeEventListener('pointerup', endSheetPointerDrag)
+  window.removeEventListener('pointercancel', endSheetPointerDrag)
+  if (sheetFrame !== null) {
+    window.cancelAnimationFrame(sheetFrame)
+    sheetFrame = null
+  }
+  const sheet = activeSheetElement
+  const close = activeSheetClose
+  const distance = sheetPendingY
+  const recentVelocity = event.timeStamp - sheetLastTime > 80 ? 0 : sheetVelocity
+  const closeDistance = sheet ? Math.min(120, sheet.offsetHeight * 0.22) : 120
+  const shouldClose = event.type !== 'pointercancel' && (distance >= closeDistance || (distance >= 28 && recentVelocity > 0.65))
   sheetDragging.value = false
-  if (shouldClose && activeSheetClose) activeSheetClose()
-  sheetDragY.value = 0
+  activeSheetPointerId = null
+  activeSheetElement = null
   activeSheetClose = null
+  sheetPendingY = 0
+  sheetVelocity = 0
+  if (!sheet) return
+
+  if (shouldClose && close) {
+    sheet.closest('.sheet-mask')?.classList.add('closing')
+    sheet.style.transition = 'transform 240ms cubic-bezier(.22, 1, .36, 1)'
+    sheet.style.transform = 'translate3d(0, 110%, 0)'
+    sheetSettleTimer = window.setTimeout(() => {
+      close()
+      sheetSettleTimer = null
+    }, 240)
+    return
+  }
+
+  sheet.style.transition = 'transform 260ms cubic-bezier(.22, 1, .36, 1)'
+  sheet.style.transform = 'translate3d(0, 0, 0)'
+  sheetSettleTimer = window.setTimeout(() => {
+    sheet.style.transition = ''
+    sheet.style.transform = ''
+    sheet.style.willChange = ''
+    sheetSettleTimer = null
+  }, 280)
 }
 
 
@@ -1444,10 +1479,10 @@ onMounted(async () => {
         </section>
 
         <div v-if="manualOpen" class="sheet-mask" @click.self="closeManual">
-          <section class="mobile-sheet manual-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
-            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeManual)" @touchstart.prevent="startSheetTouchDrag($event, closeManual)"></div>
+          <section class="mobile-sheet manual-sheet" :class="{ dragging: sheetDragging }">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeManual)"></div>
             <button class="sheet-close" title="关闭" @click="closeManual"><X :size="22" /></button>
-            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeManual)" @touchstart.prevent="startSheetTouchDrag($event, closeManual)">
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeManual)">
               <h2>使用手册</h2>
               <p>医务科会议室</p>
             </div>
@@ -1489,10 +1524,10 @@ onMounted(async () => {
         </div>
 
         <div v-if="mobileRoomSheetOpen" class="sheet-mask" @click.self="closeMobileRoomSheet">
-          <section class="mobile-sheet room-edit-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
-            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileRoomSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeMobileRoomSheet)"></div>
+          <section class="mobile-sheet room-edit-sheet" :class="{ dragging: sheetDragging }">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileRoomSheet)"></div>
             <button class="sheet-close" @click="closeMobileRoomSheet"><X :size="22" /></button>
-            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileRoomSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeMobileRoomSheet)">
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileRoomSheet)">
               <h2>{{ roomForm.id ? '编辑会议室' : '新增会议室' }}</h2>
               <p>{{ roomForm.is_active ? '当前启用' : '当前停用' }}</p>
             </div>
@@ -1509,10 +1544,10 @@ onMounted(async () => {
         </div>
 
         <div v-if="mobileBookingOpen" class="sheet-mask" @click.self="closeMobileBooking">
-          <section class="mobile-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
-            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileBooking)" @touchstart.prevent="startSheetTouchDrag($event, closeMobileBooking)"></div>
+          <section class="mobile-sheet" :class="{ dragging: sheetDragging }">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileBooking)"></div>
             <button class="sheet-close" @click="closeMobileBooking"><X :size="22" /></button>
-            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileBooking)" @touchstart.prevent="startSheetTouchDrag($event, closeMobileBooking)">
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeMobileBooking)">
               <h2>{{ selectedRoom?.name || rooms.find((room) => room.id === bookingForm.room_id)?.name || '会议室' }}</h2>
               <p><Users :size="18" />{{ selectedRoom?.capacity || rooms.find((room) => room.id === bookingForm.room_id)?.capacity || '-' }}　<Building2 :size="18" />{{ selectedRoom?.description || selectedRoom?.location || '会议室' }}</p>
             </div>
@@ -1557,10 +1592,10 @@ onMounted(async () => {
         </div>
 
         <div v-if="detailBooking" class="sheet-mask" @click.self="closeDetailSheet">
-          <section class="mobile-sheet detail-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
-            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeDetailSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeDetailSheet)"></div>
+          <section class="mobile-sheet detail-sheet" :class="{ dragging: sheetDragging }">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeDetailSheet)"></div>
             <button class="sheet-close" @click="closeDetailSheet"><X :size="22" /></button>
-            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeDetailSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeDetailSheet)">
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeDetailSheet)">
               <h2>会议详情</h2>
               <p>{{ detailBooking.room.name }}</p>
             </div>
@@ -1581,10 +1616,10 @@ onMounted(async () => {
       </section>
 
         <div v-if="recurringSheetOpen" class="sheet-mask" @click.self="closeRecurringSheet">
-          <section class="mobile-sheet recurring-sheet" :class="{ dragging: sheetDragging }" :style="sheetDragStyle()">
-            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeRecurringSheet)"></div>
+          <section class="mobile-sheet recurring-sheet" :class="{ dragging: sheetDragging }">
+            <div class="sheet-handle" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)"></div>
             <button class="sheet-close" @click="closeRecurringSheet"><X :size="22" /></button>
-            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)" @touchstart.prevent="startSheetTouchDrag($event, closeRecurringSheet)">
+            <div class="sheet-room-head" @pointerdown.prevent="startSheetPointerDrag($event, closeRecurringSheet)">
               <h2>{{ recurringMode === 'manage' ? '周期预约管理' : recurringMode === 'create' ? '预约周期会议' : '取消周期会议' }}</h2>
               <p>{{ recurringMode === 'manage' ? '选择要执行的周期会议操作' : recurringMode === 'create' ? '每周重复，先预览再确认创建' : '选择周期组，取消该组下未来有效预约' }}</p>
             </div>
