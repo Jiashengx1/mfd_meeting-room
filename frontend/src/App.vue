@@ -1230,17 +1230,19 @@ onMounted(async () => {
         </section>
 
         <section v-show="activeTab === 'schedule'" class="mobile-schedule">
-          <label class="mobile-campus-select">
-            <span>院区</span>
-            <select v-model="selectedCampus" @change="handleCampusChange">
-              <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
-            </select>
-          </label>
-          <div class="mobile-filters">
-            <button @click="shiftDate(-1)"><ChevronLeft :size="18" /></button>
-            <label class="mobile-date-picker"><span>{{ mobileDateLabel(selectedDate) }}</span><input v-model="selectedDate" type="date" @change="withLoading(loadSchedule)" /></label>
-            <button @click="shiftDate(1)"><ChevronRight :size="18" /></button>
-            <button class="reset" :disabled="scheduleRefreshing" @click="refreshScheduleWithSkeleton">{{ scheduleRefreshing ? '刷新中' : '刷新' }}</button>
+          <div class="mobile-schedule-controls">
+            <label class="mobile-campus-select">
+              <span><Building2 :size="17" />院区</span>
+              <select v-model="selectedCampus" @change="handleCampusChange">
+                <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
+              </select>
+            </label>
+            <div class="mobile-filters">
+              <button title="前一天" @click="shiftDate(-1)"><ChevronLeft :size="18" /></button>
+              <label class="mobile-date-picker"><span>{{ mobileDateLabel(selectedDate) }}</span><input v-model="selectedDate" type="date" @change="withLoading(loadSchedule)" /></label>
+              <button title="后一天" @click="shiftDate(1)"><ChevronRight :size="18" /></button>
+              <button class="reset" :disabled="scheduleRefreshing" @click="refreshScheduleWithSkeleton"><RefreshCcw :size="16" />{{ scheduleRefreshing ? '刷新中' : '刷新' }}</button>
+            </div>
           </div>
 
           <div v-if="scheduleRefreshing" class="mobile-skeleton-list">
@@ -1254,7 +1256,10 @@ onMounted(async () => {
               <div class="skeleton-timeline"><span></span><em></em></div>
             </div>
           </div>
-          <div v-else-if="visibleScheduleRooms.length === 0" class="empty mobile-empty">{{ selectedCampus }}院区暂无可预定会议室</div>
+          <div v-else-if="visibleScheduleRooms.length === 0" class="mobile-schedule-empty">
+            <span><Building2 :size="30" /></span>
+            <strong>{{ selectedCampus }}院区暂无可预定会议室</strong>
+          </div>
           <article v-else v-for="item in visibleScheduleRooms" :key="item.room.id" class="mobile-room-card" @click="prepareBooking(item.room)">
             <div class="room-icon"><MonitorUp :size="30" /></div>
             <div class="mobile-room-main">
@@ -1339,18 +1344,20 @@ onMounted(async () => {
           </div>
 
           <section v-else-if="mobileAdminView === 'bookings'" class="admin-subpage">
-            <label class="mobile-campus-select admin-campus-select">
-              <span>院区</span>
-              <select v-model="adminBookingCampus" @change="handleAdminBookingFilterChange">
-                <option value="all">全部院区</option>
-                <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
-              </select>
-            </label>
-            <div class="mobile-filters">
-              <button @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="18" /></button>
-              <label class="mobile-date-picker"><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" @change="handleAdminBookingFilterChange" /></label>
-              <button @click="shiftAdminBookingDate(1)"><ChevronRight :size="18" /></button>
-              <button class="reset" @click="withLoading(loadAdminData)">刷新</button>
+            <div class="mobile-schedule-controls admin-filter-panel">
+              <label class="mobile-campus-select admin-campus-select">
+                <span><Building2 :size="17" />院区</span>
+                <select v-model="adminBookingCampus" @change="handleAdminBookingFilterChange">
+                  <option value="all">全部院区</option>
+                  <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
+                </select>
+              </label>
+              <div class="mobile-filters">
+                <button title="前一天" @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="18" /></button>
+                <label class="mobile-date-picker"><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" @change="handleAdminBookingFilterChange" /></label>
+                <button title="后一天" @click="shiftAdminBookingDate(1)"><ChevronRight :size="18" /></button>
+                <button class="reset" @click="withLoading(loadAdminData)"><RefreshCcw :size="16" />刷新</button>
+              </div>
             </div>
             <div class="segmented-control">
               <button :class="{ active: adminBookingStatus === 'active' }" @click="adminBookingStatus = 'active'">有效</button>
@@ -1373,7 +1380,7 @@ onMounted(async () => {
 
           <section v-else-if="mobileAdminView === 'rooms'" class="admin-subpage">
             <label class="mobile-campus-select admin-campus-select">
-              <span>院区</span>
+              <span><Building2 :size="17" />院区</span>
               <select v-model="adminRoomCampus">
                 <option value="all">全部院区</option>
                 <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
@@ -1611,18 +1618,19 @@ onMounted(async () => {
               <section v-show="desktopView === 'schedule'" class="pc-page">
                 <div class="pc-toolbar">
                   <div class="pc-date-controls">
+                    <label class="pc-campus-select"><Building2 :size="16" /><span>院区</span><select v-model="selectedCampus" @change="handleCampusChange"><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label>
+                    <span class="pc-control-divider"></span>
                     <button class="icon-button" title="前一天" @click="shiftDate(-1)"><ChevronLeft :size="19" /></button>
                     <label class="pc-date-picker"><span>{{ mobileDateLabel(selectedDate) }}</span><input v-model="selectedDate" type="date" @change="handleDesktopScheduleDateChange" /></label>
                     <button class="icon-button" title="后一天" @click="shiftDate(1)"><ChevronRight :size="19" /></button>
                     <button @click="desktopGoToday">今天</button>
                     <button :disabled="scheduleRefreshing" @click="refreshScheduleWithSkeleton"><RefreshCcw :size="17" />{{ scheduleRefreshing ? '刷新中' : '刷新' }}</button>
-                    <label class="pc-campus-select"><span>院区</span><select v-model="selectedCampus" @change="handleCampusChange"><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label>
                   </div>
                   <span v-if="selectedSlotStart !== null && selectedRoom && !desktopBookingDrawerOpen" class="pc-selection-hint">{{ selectedRoom.name }} · 起点 {{ minutesToText(7 * 60 + selectedSlotStart * 30) }}，请再选择结束时段</span>
                 </div>
 
                 <div v-if="scheduleRefreshing" class="pc-loading-band">正在刷新会议室状态</div>
-                <div v-else-if="visibleScheduleRooms.length === 0" class="empty">{{ selectedCampus }}院区暂无可预定会议室</div>
+                <div v-else-if="visibleScheduleRooms.length === 0" class="pc-table-empty pc-schedule-empty"><span><Building2 :size="26" /></span><strong>{{ selectedCampus }}院区暂无可预定会议室</strong></div>
                 <div v-else class="pc-schedule-table">
                   <div class="pc-schedule-head">
                     <span>会议室</span>
@@ -1692,11 +1700,12 @@ onMounted(async () => {
               <section v-if="isAdmin" v-show="desktopView === 'admin-bookings'" class="pc-page">
                 <div class="pc-toolbar">
                   <div class="pc-date-controls">
+                    <label class="pc-campus-select"><Building2 :size="16" /><span>院区</span><select v-model="adminBookingCampus" @change="handleAdminBookingFilterChange"><option value="all">全部院区</option><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label>
+                    <span class="pc-control-divider"></span>
                     <button class="icon-button" title="前一天" @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="19" /></button>
                     <label class="pc-date-picker"><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" @change="handleAdminBookingFilterChange" /></label>
                     <button class="icon-button" title="后一天" @click="shiftAdminBookingDate(1)"><ChevronRight :size="19" /></button>
                     <button @click="withLoading(loadAdminBookings)"><RefreshCcw :size="17" />刷新</button>
-                    <label class="pc-campus-select"><span>院区</span><select v-model="adminBookingCampus" @change="handleAdminBookingFilterChange"><option value="all">全部院区</option><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label>
                   </div>
                 </div>
                 <div class="pc-tab-row compact">
@@ -1724,7 +1733,7 @@ onMounted(async () => {
 
               <section v-if="isAdmin" v-show="desktopView === 'admin-rooms'" class="pc-page">
                 <div class="pc-toolbar">
-                  <div class="pc-room-filters"><label class="pc-campus-select"><span>院区</span><select v-model="adminRoomCampus"><option value="all">全部院区</option><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label><div class="pc-tab-row compact">
+                  <div class="pc-room-filters"><label class="pc-campus-select"><Building2 :size="16" /><span>院区</span><select v-model="adminRoomCampus"><option value="all">全部院区</option><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label><span class="pc-control-divider"></span><div class="pc-tab-row compact">
                     <button :class="{ active: adminRoomStatus === 'all' }" @click="adminRoomStatus = 'all'">全部 {{ adminCampusRooms.length }}</button>
                     <button :class="{ active: adminRoomStatus === 'active' }" @click="adminRoomStatus = 'active'">启用 {{ adminCampusRooms.filter((room) => room.is_active).length }}</button>
                     <button :class="{ active: adminRoomStatus === 'disabled' }" @click="adminRoomStatus = 'disabled'">停用 {{ adminCampusRooms.filter((room) => !room.is_active).length }}</button>
