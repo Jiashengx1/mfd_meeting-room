@@ -94,7 +94,7 @@ h3 { font-size: 17px; margin-bottom: 8px; }
   overflow: hidden;
 }
 .mobile-hero strong { display: block; font-size: 29px; line-height: 1.1; margin-bottom: 10px; }
-.mobile-hero span { display: block; font-size: 20px; opacity: .7; }
+.mobile-hero span { display: block; max-width: 210px; font-size: 14px; line-height: 1.5; opacity: .78; }
 .mobile-menu-card {
   background: #fff;
   border-radius: 22px;
@@ -534,13 +534,16 @@ h3 { font-size: 17px; margin-bottom: 8px; }
   .pc-room-summary strong { overflow-wrap: anywhere; font-size: 15px; }
   .pc-room-summary span, .pc-room-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6c7680; font-size: 12px; }
   .pc-slot-grid { display: grid; grid-template-columns: repeat(22, minmax(21px, 1fr)); align-items: stretch; padding: 20px 4px; }
-  .pc-slot-grid button { position: relative; min-width: 0; min-height: 52px; padding: 0; overflow: hidden; border: 0; border-right: 1px solid #e2e6e9; border-radius: 0; background: #fff; }
+  .pc-slot-grid button { position: relative; min-width: 0; min-height: 52px; padding: 0; overflow: hidden; border: 0; border-radius: 0; background: #fff; }
   .pc-slot-grid button:first-child { border-left: 1px solid #e2e6e9; }
+  .pc-slot-grid button::after { position: absolute; z-index: 1; top: 25%; right: 0; width: 1px; height: 50%; background: #e2e6e9; content: ''; pointer-events: none; }
+  .pc-slot-grid button:nth-child(even)::after { top: 0; height: 100%; }
   .pc-slot-grid button:hover:not(:disabled):not(.occupied) { background: #edf4ff; }
   .pc-slot-grid button.expired { background: #e8ebee; cursor: not-allowed; opacity: 1; }
-  .pc-slot-grid button.occupied { background: #fff0d8; border-right-color: transparent; cursor: pointer; }
+  .pc-slot-grid button.occupied { background: #fff0d8; cursor: pointer; }
+  .pc-slot-grid button.occupied::after { display: none; }
   .pc-slot-grid button.occupied.booking-start { box-shadow: inset 1px 0 #efd7af; }
-  .pc-slot-grid button.occupied.booking-end { border-right-color: #efd7af; }
+  .pc-slot-grid button.occupied.booking-end { border-right: 1px solid #efd7af; }
   .pc-slot-grid button.selected { z-index: 2; background: #dceaff; box-shadow: inset 0 0 0 1px #1e73ff; }
   .pc-booking-preview { position: fixed; z-index: 60; width: min(288px, calc(100vw - 24px)); display: grid; gap: 6px; padding: 12px 14px; border: 1px solid #303b47; border-radius: 7px; background: #1f2933; color: #fff; box-shadow: 0 10px 28px rgba(16, 24, 40, .24); pointer-events: none; }
   .pc-booking-preview.above { transform: translateY(-100%); }

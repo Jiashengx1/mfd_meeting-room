@@ -1222,8 +1222,8 @@ onMounted(async () => {
         <section v-show="activeTab === 'home'" class="mobile-home">
           <div class="mobile-hero">
             <div>
-              <strong>使用手册</strong>
-              <span>医务科会议室</span>
+              <strong>医务科会议室</strong>
+              <span>如有技术问题联系许家晟662441</span>
             </div>
             <MonitorUp :size="78" />
           </div>
