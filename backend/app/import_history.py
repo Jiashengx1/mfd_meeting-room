@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.campuses import CAMPUS_VALUES
 from app.database import SessionLocal, init_db
 from app.models import Booking, BookingStatus, Room, User, UserRole
 from app.security import hash_password
@@ -16,6 +17,13 @@ IMPORT_DEPARTMENT = "医务科"
 
 def bool_value(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "y", "是", "启用"}
+
+
+def campus_value(value: str, row_number: int) -> str:
+    campus = value.strip()
+    if campus not in CAMPUS_VALUES:
+        raise ValueError(f"第 {row_number} 行院区无效：{campus or '空值'}")
+    return campus
 
 
 def get_or_create_import_user(db: Session) -> User:
@@ -44,10 +52,11 @@ def import_rooms(path: Path, db: Session) -> tuple[int, int]:
     updated = 0
     with path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
-        required = {"name", "location", "capacity", "description", "is_active"}
+        required = {"campus", "name", "location", "capacity", "description", "is_active"}
         if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
-            raise ValueError("rooms.csv 必须包含表头：name,location,capacity,description,is_active")
-        for row in reader:
+            raise ValueError("rooms.csv 必须包含表头：campus,name,location,capacity,description,is_active")
+        for row_number, row in enumerate(reader, start=2):
+            campus = campus_value(row.get("campus") or "", row_number)
             name = (row.get("name") or "").strip()
             if not name:
                 continue
@@ -57,7 +66,7 @@ def import_rooms(path: Path, db: Session) -> tuple[int, int]:
                 "description": (row.get("description") or "").strip() or None,
                 "is_active": bool_value(row.get("is_active") or "true"),
             }
-            room = db.query(Room).filter(Room.name == name).one_or_none()
+            room = db.query(Room).filter(Room.campus == campus, Room.name == name).one_or_none()
             if room:
                 room.location = payload["location"]
                 room.capacity = payload["capacity"]
@@ -65,7 +74,7 @@ def import_rooms(path: Path, db: Session) -> tuple[int, int]:
                 room.is_active = payload["is_active"]
                 updated += 1
             else:
-                db.add(Room(name=name, **payload))
+                db.add(Room(campus=campus, name=name, **payload))
                 created += 1
     db.flush()
     return created, updated
@@ -104,15 +113,16 @@ def import_bookings(path: Path, db: Session, import_user: User) -> dict[str, int
     stats = {"created": 0, "duplicates": 0, "conflicts": 0, "missing_rooms": 0}
     with path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
-        required = {"room_name", "title", "department", "user_name", "attendee_count", "note", "start_at", "end_at", "status"}
+        required = {"campus", "room_name", "title", "department", "user_name", "attendee_count", "note", "start_at", "end_at", "status"}
         if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
             raise ValueError("bookings.csv 表头不完整")
-        for row in reader:
+        for row_number, row in enumerate(reader, start=2):
+            campus = campus_value(row.get("campus") or "", row_number)
             room_name = (row.get("room_name") or "").strip()
-            room = db.query(Room).filter(Room.name == room_name).one_or_none()
+            room = db.query(Room).filter(Room.campus == campus, Room.name == room_name).one_or_none()
             if not room:
                 stats["missing_rooms"] += 1
-                print(f"跳过：会议室不存在 {room_name}")
+                print(f"跳过：会议室不存在 {campus} · {room_name}")
                 continue
             start_at = datetime.fromisoformat((row.get("start_at") or "").strip())
             end_at = datetime.fromisoformat((row.get("end_at") or "").strip())
@@ -130,6 +140,7 @@ def import_bookings(path: Path, db: Session, import_user: User) -> dict[str, int
                 Booking(
                     room_id=room.id,
                     applicant_id=import_user.id,
+                    campus=campus,
                     title=(row.get("title") or "历史会议室使用记录").strip() or "历史会议室使用记录",
                     department=department,
                     user_name=user_name,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import re
 from dataclasses import dataclass
@@ -9,8 +10,9 @@ from typing import Any
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
-INPUT = Path("data/医务科会议室使用登记.xlsx")
-OUTPUT_DIR = Path("data/cleaned")
+DATA_DIR = Path(__file__).resolve().parent / "data"
+INPUT = DATA_DIR / "医务科会议室使用登记.xlsx"
+OUTPUT_DIR = DATA_DIR / "cleaned"
 ROOMS_CSV = OUTPUT_DIR / "rooms.csv"
 BOOKINGS_CSV = OUTPUT_DIR / "bookings.csv"
 REPORT_CSV = OUTPUT_DIR / "cleaning_report.csv"
@@ -24,6 +26,7 @@ SHANGHAI = timezone(timedelta(hours=8))
 TITLE = "历史会议室使用记录"
 IMPORT_APPLICANT_STAFF_ID = "IMPORT"
 FORCE_YEAR = 2026
+CAMPUS_VALUES = ("庆春", "钱塘", "大运河", "绍兴")
 ROOM_OVERRIDES = {
     "2号楼2楼第三会议室": {"name": "第三会议室", "location": "3号楼2楼", "capacity": "20", "description": ""},
     "谈话室二": {"name": "医务科谈话室2", "location": "5号楼2楼", "capacity": "10", "description": ""},
@@ -32,6 +35,7 @@ ROOM_OVERRIDES = {
 
 @dataclass(frozen=True)
 class BookingRow:
+    campus: str
     room_name: str
     applicant_staff_id: str
     title: str
@@ -158,10 +162,11 @@ def row_get(row: list[str], idx: int) -> str:
     return row[idx].strip() if idx < len(row) else ""
 
 
-def build_bookings(sheet_name: str, rows: list[list[str]]) -> tuple[dict[str, Any], list[BookingRow], list[dict[str, str]]]:
+def build_bookings(sheet_name: str, rows: list[list[str]], campus: str) -> tuple[dict[str, Any], list[BookingRow], list[dict[str, str]]]:
     room_raw = clean_room_name(sheet_name, rows)
     override = ROOM_OVERRIDES.get(sheet_name, {})
     room = {
+        "campus": campus,
         "name": override.get("name", normalize_room_name(room_raw)),
         "location": override.get("location", room_location(room_raw)),
         "capacity": override.get("capacity", "1"),
@@ -245,6 +250,7 @@ def build_bookings(sheet_name: str, rows: list[list[str]]) -> tuple[dict[str, An
         else:
             end_at = datetime.combine(item["date"], time(item["end_minutes"] // 60, item["end_minutes"] % 60), SHANGHAI)
         bookings.append(BookingRow(
+            campus=campus,
             room_name=room["name"],
             applicant_staff_id=IMPORT_APPLICANT_STAFF_ID,
             title=TITLE,
@@ -269,7 +275,14 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> 
         writer.writerows(rows)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="清洗会议室历史登记 Excel")
+    parser.add_argument("--campus", required=True, choices=CAMPUS_VALUES, help="本次 Excel 数据所属院区")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     sheets = read_workbook(INPUT)
     rooms: list[dict[str, Any]] = []
@@ -277,13 +290,14 @@ def main() -> None:
     report: list[dict[str, str]] = []
 
     for sheet_name, rows in sheets.items():
-        room, room_bookings, room_report = build_bookings(sheet_name, rows)
+        room, room_bookings, room_report = build_bookings(sheet_name, rows, args.campus)
         rooms.append(room)
         bookings.extend(room_bookings)
         report.extend(room_report)
 
-    write_csv(ROOMS_CSV, ["name", "location", "capacity", "description", "is_active"], rooms)
+    write_csv(ROOMS_CSV, ["campus", "name", "location", "capacity", "description", "is_active"], rooms)
     write_csv(BOOKINGS_CSV, [
+        "campus",
         "room_name",
         "applicant_staff_id",
         "title",

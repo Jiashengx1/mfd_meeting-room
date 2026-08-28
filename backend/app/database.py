@@ -29,6 +29,59 @@ def init_db() -> None:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
     Base.metadata.create_all(bind=engine)
     with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS campus VARCHAR(20)"))
+        conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS campus VARCHAR(20)"))
+        conn.execute(text("ALTER TABLE recurring_series ADD COLUMN IF NOT EXISTS campus VARCHAR(20)"))
+        conn.execute(text("UPDATE rooms SET campus = '庆春' WHERE campus IS NULL OR campus = ''"))
+        conn.execute(
+            text(
+                """
+                UPDATE bookings
+                SET campus = rooms.campus
+                FROM rooms
+                WHERE bookings.room_id = rooms.id
+                  AND (bookings.campus IS NULL OR bookings.campus = '')
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE recurring_series
+                SET campus = rooms.campus
+                FROM rooms
+                WHERE recurring_series.room_id = rooms.id
+                  AND (recurring_series.campus IS NULL OR recurring_series.campus = '')
+                """
+            )
+        )
+        for table in ("rooms", "bookings", "recurring_series"):
+            conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN campus SET DEFAULT '庆春'"))
+            conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN campus SET NOT NULL"))
+        conn.execute(text("DROP INDEX IF EXISTS ix_rooms_name"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rooms_name ON rooms (name)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rooms_campus ON rooms (campus)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bookings_campus ON bookings (campus)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recurring_series_campus ON recurring_series (campus)"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_rooms_campus_name ON rooms (campus, name)"))
+        for table in ("rooms", "bookings", "recurring_series"):
+            constraint_name = f"ck_{table}_campus"
+            conn.execute(
+                text(
+                    f"""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = '{constraint_name}'
+                        ) THEN
+                            ALTER TABLE {table}
+                            ADD CONSTRAINT {constraint_name}
+                            CHECK (campus IN ('庆春', '钱塘', '大运河', '绍兴'));
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
         conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS department VARCHAR(100)"))
         conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_name VARCHAR(100)"))
         conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS recurring_series_id INTEGER"))

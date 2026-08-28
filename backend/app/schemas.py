@@ -2,6 +2,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from app.campuses import Campus
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -32,6 +34,7 @@ class UserOut(BaseModel):
 
 
 class RoomBase(BaseModel):
+    campus: Campus
     name: str = Field(min_length=1, max_length=100)
     location: str = Field(min_length=1, max_length=200)
     capacity: int = Field(gt=0, le=10000)
@@ -44,6 +47,7 @@ class RoomCreate(RoomBase):
 
 
 class RoomUpdate(BaseModel):
+    campus: Campus | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     location: str | None = Field(default=None, min_length=1, max_length=200)
     capacity: int | None = Field(default=None, gt=0, le=10000)
@@ -53,6 +57,7 @@ class RoomUpdate(BaseModel):
 
 class RoomOut(RoomBase):
     id: int
+    campus_locked: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -86,6 +91,7 @@ class BookingOut(BaseModel):
     room: RoomOut
     applicant: UserOut
     recurring_series_id: int | None
+    campus: Campus | None
     title: str
     department: str | None
     user_name: str | None
@@ -126,6 +132,7 @@ class RecurringSeriesOut(BaseModel):
     id: int
     room: RoomOut
     created_by: UserOut
+    campus: Campus | None
     title: str
     department: str | None
     user_name: str | None
@@ -158,6 +165,7 @@ class RecurringSeriesCancelResult(BaseModel):
 
 class DaySchedule(BaseModel):
     date: date
+    campus: Campus
     rooms: list["RoomSchedule"]
 
 

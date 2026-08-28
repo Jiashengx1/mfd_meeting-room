@@ -1,4 +1,5 @@
 export type Role = '管理员' | '普通用户'
+export type Campus = '庆春' | '钱塘' | '大运河' | '绍兴'
 
 export interface User {
   id: number
@@ -10,11 +11,13 @@ export interface User {
 
 export interface Room {
   id: number
+  campus: Campus
   name: string
   location: string
   capacity: number
   description?: string | null
   is_active: boolean
+  campus_locked: boolean
 }
 
 export interface Booking {
@@ -22,6 +25,7 @@ export interface Booking {
   room: Room
   applicant: User
   recurring_series_id?: number | null
+  campus?: Campus | null
   title: string
   department?: string | null
   user_name?: string | null
@@ -65,6 +69,7 @@ export interface RecurringSeries {
   id: number
   room: Room
   created_by: User
+  campus?: Campus | null
   title: string
   department?: string | null
   user_name?: string | null
@@ -97,6 +102,7 @@ export interface RecurringSeriesCancelResult {
 
 export interface DaySchedule {
   date: string
+  campus: Campus
   rooms: RoomSchedule[]
 }
 
@@ -145,12 +151,22 @@ export const api = {
   register: (payload: Record<string, string>) =>
     request<{ access_token: string; user: User }>('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   me: () => request<User>('/api/auth/me'),
-  rooms: (includeDisabled = false) => request<Room[]>(`/api/rooms?include_disabled=${includeDisabled}`),
+  rooms: (includeDisabled = false, campus?: Campus) => {
+    const params = new URLSearchParams({ include_disabled: String(includeDisabled) })
+    if (campus) params.set('campus', campus)
+    return request<Room[]>(`/api/rooms?${params}`)
+  },
   createRoom: (payload: Partial<Room>) => request<Room>('/api/rooms', { method: 'POST', body: JSON.stringify(payload) }),
   updateRoom: (id: number, payload: Partial<Room>) =>
     request<Room>(`/api/rooms/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  schedule: (date: string) => request<DaySchedule>(`/api/bookings/schedule?target_date=${date}`),
-  bookings: () => request<Booking[]>('/api/bookings'),
+  schedule: (date: string, campus: Campus) => request<DaySchedule>(`/api/bookings/schedule?target_date=${date}&campus=${encodeURIComponent(campus)}`),
+  bookings: (targetDate?: string, campus?: Campus) => {
+    const params = new URLSearchParams()
+    if (targetDate) params.set('target_date', targetDate)
+    if (campus) params.set('campus', campus)
+    const query = params.toString()
+    return request<Booking[]>(`/api/bookings${query ? `?${query}` : ''}`)
+  },
   myBookings: () => request<Booking[]>('/api/bookings/mine'),
   createBooking: (payload: Record<string, unknown>) =>
     request<Booking>('/api/bookings', { method: 'POST', body: JSON.stringify(payload) }),

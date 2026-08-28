@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.campuses import Campus, DEFAULT_CAMPUS
 from app.models import Booking, BookingStatus, Room, User, UserRole
 from app.schemas import BookingCreate, BookingOut, BookingUpdate, DaySchedule, RecurringBookingRequest, RecurringBookingResult, RecurringSeriesCancelResult, RecurringSeriesOut, RoomSchedule
 from app.services import active_bookings_for_day, booking_scope, cancel_booking, cancel_recurring_series, create_booking, create_recurring_bookings, get_booking_or_404, list_recurring_series, preview_recurring_bookings, update_booking
-from app.time_utils import SHANGHAI
+from app.time_utils import SHANGHAI, day_bounds
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 
@@ -16,16 +17,18 @@ router = APIRouter(prefix="/api/bookings", tags=["bookings"])
 @router.get("/schedule", response_model=DaySchedule)
 def schedule(
     target_date: date = Query(default_factory=lambda: datetime.now(SHANGHAI).date()),
+    campus: Campus = Query(default=DEFAULT_CAMPUS),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DaySchedule:
-    rooms = db.query(Room).filter(Room.is_active.is_(True)).order_by(Room.name.asc()).all()
+    rooms = db.query(Room).filter(Room.is_active.is_(True), Room.campus == campus.value).order_by(Room.name.asc()).all()
     bookings = active_bookings_for_day(db, target_date, [room.id for room in rooms])
     by_room: dict[int, list[Booking]] = {room.id: [] for room in rooms}
     for booking in bookings:
         by_room.setdefault(booking.room_id, []).append(booking)
     return DaySchedule(
         date=target_date,
+        campus=campus,
         rooms=[RoomSchedule(room=room, bookings=by_room.get(room.id, [])) for room in rooms],
     )
 
@@ -34,16 +37,18 @@ def schedule(
 def list_bookings(
     status: str | None = None,
     target_date: date | None = None,
+    campus: Campus | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[Booking]:
     query = booking_scope(db, user)
     if status:
         query = query.filter(Booking.status == status)
+    if campus:
+        query = query.filter(Booking.campus == campus.value)
     if target_date:
-        day_bookings = active_bookings_for_day(db, target_date)
-        ids = [booking.id for booking in day_bookings]
-        query = query.filter(Booking.id.in_(ids) if ids else False)
+        start_at, end_at = day_bounds(target_date)
+        query = query.filter(Booking.start_at < end_at, Booking.end_at > start_at)
     return query.limit(300).all()
 
 

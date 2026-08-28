@@ -4,6 +4,7 @@ from enum import Enum
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.campuses import Campus, DEFAULT_CAMPUS
 from app.database import Base
 
 
@@ -44,9 +45,11 @@ class User(Base):
 
 class Room(Base):
     __tablename__ = "rooms"
+    __table_args__ = (UniqueConstraint("campus", "name", name="uq_rooms_campus_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    campus: Mapped[Campus] = mapped_column(String(20), default=DEFAULT_CAMPUS.value, index=True)
+    name: Mapped[str] = mapped_column(String(100), index=True)
     location: Mapped[str] = mapped_column(String(200))
     capacity: Mapped[int] = mapped_column(Integer)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -64,6 +67,7 @@ class RecurringSeries(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), index=True)
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    campus: Mapped[Campus] = mapped_column(String(20), default=DEFAULT_CAMPUS.value, index=True)
     title: Mapped[str] = mapped_column(String(200))
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -94,6 +98,7 @@ class Booking(Base):
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), index=True)
     applicant_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     recurring_series_id: Mapped[int | None] = mapped_column(ForeignKey("recurring_series.id"), nullable=True, index=True)
+    campus: Mapped[Campus] = mapped_column(String(20), default=DEFAULT_CAMPUS.value, index=True)
     title: Mapped[str] = mapped_column(String(200))
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)

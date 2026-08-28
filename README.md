@@ -9,6 +9,7 @@
 - 用户角色来自 `staff.csv` 第四列：`管理员` 或 `普通用户`
 - 登录状态默认保持 180 天
 - 管理员维护会议室：新增、修改、启用、停用
+- 会议室按 `庆春`、`钱塘`、`大运河`、`绍兴` 四个固定院区分类，用户可跨院区查看和预约
 - 普通用户创建、查看、修改、取消自己的预约
 - 管理员查看、取消全部预约，维护会议室，并支持周期性预约
 - 预约禁止跨日期，时间粒度 30 分钟，可预约范围 `07:00-24:00`
@@ -197,7 +198,7 @@ docker compose exec backend python -m app.import_staff /app/staff.csv
 原始 Excel 放在：
 
 ```text
-data/医务科会议室使用登记.xlsx
+scripts/data/医务科会议室使用登记.xlsx
 ```
 
 清洗脚本：
@@ -209,20 +210,21 @@ scripts/clean_meeting_records.py
 执行清洗：
 
 ```bash
-python3 scripts/clean_meeting_records.py
+python3 scripts/clean_meeting_records.py --campus 庆春
 ```
 
 输出文件：
 
 ```text
-data/cleaned/rooms.csv
-data/cleaned/bookings.csv
-data/cleaned/cleaning_report.csv
+scripts/data/cleaned/rooms.csv
+scripts/data/cleaned/bookings.csv
+scripts/data/cleaned/cleaning_report.csv
 ```
 
 当前清洗规则：
 
 - 每张 sheet 对应一个会议室
+- 必须通过 `--campus` 指定本次 Excel 所属院区，只接受 `庆春`、`钱塘`、`大运河`、`绍兴`
 - 年份强制设为 `2026`
 - sheet `2号楼2楼第三会议室` 映射为 `第三会议室`
 - sheet `谈话室二` 映射为 `医务科谈话室2`
@@ -240,6 +242,7 @@ docker compose exec backend python -m app.import_history /app/data/cleaned/rooms
 导入脚本规则：
 
 - 会创建或更新 `rooms.csv` 中的会议室
+- 会议室和预约通过 `(campus, room_name)` 联合匹配，不会根据名称猜测院区
 - 会创建一个停用的普通用户 `IMPORT` 作为历史预约归属，不能登录
 - 重复预约会跳过
 - 与现有有效预约冲突的记录会跳过并打印冲突信息
@@ -247,19 +250,20 @@ docker compose exec backend python -m app.import_history /app/data/cleaned/rooms
 
 ## 会议室数据格式
 
-会议室数据可由管理员网页维护，也可以通过 `data/cleaned/rooms.csv` 导入。
+会议室数据可由管理员网页维护，也可以通过 `scripts/data/cleaned/rooms.csv` 导入。
 
 CSV 字段：
 
 ```csv
-name,location,capacity,description,is_active
-第三会议室,3号楼2楼,20,,true
-医务科谈话室2,5号楼2楼,10,,true
+campus,name,location,capacity,description,is_active
+庆春,第三会议室,3号楼2楼,20,,true
+庆春,医务科谈话室2,5号楼2楼,10,,true
 ```
 
 字段说明：
 
-- `name`：会议室名称，必填，唯一
+- `campus`：院区，必填，只能是四个固定院区之一
+- `name`：会议室名称，必填；同一院区内唯一，不同院区允许重名
 - `location`：所在位置，必填
 - `capacity`：容量，正整数
 - `description`：简介或备注，可为空
@@ -269,16 +273,17 @@ name,location,capacity,description,is_active
 
 ## 历史预约数据格式
 
-`data/cleaned/bookings.csv` 字段：
+`scripts/data/cleaned/bookings.csv` 字段：
 
 ```csv
-room_name,applicant_staff_id,title,department,user_name,attendee_count,note,start_at,end_at,status
-第三会议室,IMPORT,历史会议室使用记录,医务科,张三,1,来源说明,2026-08-03T08:00:00+08:00,2026-08-03T09:00:00+08:00,active
+campus,room_name,applicant_staff_id,title,department,user_name,attendee_count,note,start_at,end_at,status
+庆春,第三会议室,IMPORT,历史会议室使用记录,医务科,张三,1,来源说明,2026-08-03T08:00:00+08:00,2026-08-03T09:00:00+08:00,active
 ```
 
 字段说明：
 
-- `room_name`：会议室名称，必须能匹配 `rooms.name`
+- `campus`：预约所属院区快照，必填
+- `room_name`：会议室名称，必须与 `campus` 一起匹配会议室
 - `applicant_staff_id`：保留字段，当前导入统一使用停用用户 `IMPORT`
 - `title`：会议名称
 - `department`：预约记录中的科室快照
@@ -311,6 +316,7 @@ room_name,applicant_staff_id,title,department,user_name,attendee_count,note,star
 - 已结束时段跳过
 - 部门和使用人强制使用当前登录管理员
 - 预约周期会议只允许选择启用会议室
+- 周期预约按院区分组选择会议室，预约和周期组都会保存院区快照
 - 取消周期会议不会处理已取消预约，也不会处理已结束预约
 
 ## 查看数据库
@@ -325,13 +331,22 @@ docker compose exec db psql -U meeting_room -d meeting_room
 
 ```sql
 select id, staff_id, name, department, role, is_active, created_at from users order by id;
-select id, name, location, capacity, description, is_active from rooms order by id;
-select b.id, r.name as room, b.title, b.department, b.user_name, b.start_at, b.end_at, b.status
+select id, campus, name, location, capacity, description, is_active from rooms order by campus, id;
+select b.id, b.campus, r.name as room, b.title, b.department, b.user_name, b.start_at, b.end_at, b.status
 from bookings b
 join rooms r on r.id = b.room_id
 order by b.start_at desc
 limit 50;
 ```
+
+## 院区数据升级
+
+后端启动时会执行幂等升级，不需要清空数据库：
+
+- 现有会议室自动设置为 `庆春`
+- 现有预约和周期预约组按会议室补充院区快照
+- 会议室唯一规则从全局名称唯一调整为 `(campus, name)` 唯一
+- 有预约记录的会议室禁止修改院区；实际迁移时应停用旧记录并在新院区创建会议室
 
 ## 本地开发命令
 

@@ -117,6 +117,7 @@ def recurring_series_out(db: Session, series: RecurringSeries) -> dict:
         "id": series.id,
         "room": series.room,
         "created_by": series.created_by,
+        "campus": series.campus or series.room.campus,
         "title": series.title,
         "department": series.department,
         "user_name": series.user_name,
@@ -151,6 +152,7 @@ def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor:
         series = RecurringSeries(
             room_id=payload.room_id,
             created_by_id=actor.id,
+            campus=room.campus,
             title=payload.title,
             department=actor.department,
             user_name=actor.name,
@@ -201,6 +203,7 @@ def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor:
                         room_id=payload.room_id,
                         applicant_id=actor.id,
                         recurring_series_id=series.id if series else None,
+                        campus=room.campus,
                         title=payload.title,
                         department=actor.department,
                         user_name=actor.name,
@@ -337,6 +340,7 @@ def create_booking(db: Session, actor: User, payload: BookingCreate) -> Booking:
     booking = Booking(
         room_id=payload.room_id,
         applicant_id=actor.id,
+        campus=room.campus,
         title=payload.title,
         department=actor.department,
         user_name=actor.name,
@@ -378,6 +382,7 @@ def update_booking(db: Session, actor: User, booking: Booking, payload: BookingU
     assert_no_conflict(db, room_id, start_at, end_at, exclude_booking_id=booking.id)
 
     booking.room_id = room_id
+    booking.campus = room.campus
     booking.start_at = start_at
     booking.end_at = end_at
     if payload.title is not None:

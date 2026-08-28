@@ -26,7 +26,7 @@ services:
       - "${PUBLISH_HOST:-127.0.0.1}:8000:8000"
     volumes:
       - ./staff.csv:/app/staff.csv:ro
-      - ./data:/app/data:ro
+      - ./scripts/data:/app/data:ro
     depends_on:
       db:
         condition: service_healthy

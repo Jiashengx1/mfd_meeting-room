@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   DoorOpen,
+  Eye,
   LogOut,
   MonitorUp,
   Pencil,
@@ -22,13 +23,25 @@ import {
   X,
   XCircle,
 } from '@lucide/vue'
-import { api, Booking, DaySchedule, formatLocalDate, formatLocalMonthDay, formatLocalTime, getToken, RecurringBookingResult, RecurringSeries, RecurringSeriesCancelResult, Room, setToken, User } from './api'
+import { api, Booking, Campus, DaySchedule, formatLocalDate, formatLocalMonthDay, formatLocalTime, getToken, RecurringBookingResult, RecurringSeries, RecurringSeriesCancelResult, Room, setToken, User } from './api'
 
 type Tab = 'home' | 'schedule' | 'mine' | 'admin'
 type MobileAdminView = 'home' | 'bookings' | 'rooms' | 'stats'
-type DesktopAdminView = 'bookings' | 'rooms' | 'recurring' | 'stats'
+type DesktopView = 'schedule' | 'mine' | 'admin-bookings' | 'admin-rooms' | 'admin-recurring' | 'admin-stats'
+type DesktopMineView = 'upcoming' | 'recurring' | 'finished' | 'cancelled'
+type RecurringStatusFilter = 'active' | 'cancelled'
+
+const DESKTOP_VIEW_KEY = 'meeting_room_desktop_view'
+const desktopViews: DesktopView[] = ['schedule', 'mine', 'admin-bookings', 'admin-rooms', 'admin-recurring', 'admin-stats']
+function savedDesktopView(): DesktopView {
+  const saved = localStorage.getItem(DESKTOP_VIEW_KEY) as DesktopView | null
+  return saved && desktopViews.includes(saved) ? saved : 'schedule'
+}
 type AdminBookingStatus = 'active' | 'finished' | 'cancelled'
 type RoomStatusFilter = 'all' | 'active' | 'disabled'
+type CampusFilter = 'all' | Campus
+
+const CAMPUS_OPTIONS: Campus[] = ['庆春', '钱塘', '大运河', '绍兴']
 
 function dateInputInShanghai(value = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -58,10 +71,25 @@ const error = ref('')
 const notice = ref('')
 const activeTab = ref<Tab>('home')
 const mobileAdminView = ref<MobileAdminView>('home')
-const desktopAdminView = ref<DesktopAdminView>('bookings')
+const desktopView = ref<DesktopView>(savedDesktopView())
+const desktopMineView = ref<DesktopMineView>('upcoming')
+const desktopBookingDrawerOpen = ref(false)
+const desktopRecurringDrawerOpen = ref(false)
+const desktopBookingPreview = ref<{
+  booking: Booking
+  left: number
+  top: number
+  placement: 'above' | 'below'
+} | null>(null)
+let desktopPreviewTimer: number | undefined
+const desktopRecurringStatus = ref<RecurringStatusFilter>('active')
+const desktopRecurringSeriesList = ref<RecurringSeries[]>([])
+const desktopSelectedSeries = ref<RecurringSeries | null>(null)
 const adminBookingDate = ref(dateInputInShanghai())
 const adminBookingStatus = ref<AdminBookingStatus>('active')
+const adminBookingCampus = ref<CampusFilter>('all')
 const adminRoomStatus = ref<RoomStatusFilter>('all')
+const adminRoomCampus = ref<CampusFilter>('all')
 const mobileRoomSheetOpen = ref(false)
 const recurringSheetOpen = ref(false)
 const recurringMode = ref<'manage' | 'create' | 'cancel'>('manage')
@@ -69,6 +97,7 @@ const recurringResult = ref<RecurringBookingResult | null>(null)
 const recurringSeriesList = ref<RecurringSeries[]>([])
 const recurringSeriesCancelResult = ref<RecurringSeriesCancelResult | null>(null)
 const selectedDate = ref(dateInputInShanghai())
+const selectedCampus = ref<Campus>('庆春')
 const schedule = ref<DaySchedule | null>(null)
 const myBookings = ref<Booking[]>([])
 const myRecurringSeries = ref<RecurringSeries[]>([])
@@ -90,7 +119,9 @@ let sheetStartY = 0
 let activeSheetClose: (() => void) | null = null
 let lockedScrollY = 0
 
-const hasOpenSheet = computed(() => mobileBookingOpen.value || !!detailBooking.value || mobileRoomSheetOpen.value || recurringSheetOpen.value)
+const hasOpenSheet = computed(() => mobileBookingOpen.value || desktopBookingDrawerOpen.value || desktopRecurringDrawerOpen.value || !!detailBooking.value || mobileRoomSheetOpen.value || recurringSheetOpen.value)
+
+watch(desktopView, (view) => localStorage.setItem(DESKTOP_VIEW_KEY, view))
 
 watch(hasOpenSheet, (open) => {
   if (open) {
@@ -116,7 +147,7 @@ const authMode = ref<'login' | 'register'>('login')
 const loginForm = reactive({ staff_id: '', password: '' })
 const registerForm = reactive({ staff_id: '', confirm_staff_id: '', name: '', department: '' })
 const roomOriginalActive = ref(true)
-const roomForm = reactive({ id: 0, name: '', location: '', capacity: 10, description: '', is_active: true })
+const roomForm = reactive({ id: 0, campus: '庆春' as Campus, campus_locked: false, name: '', location: '', capacity: 10, description: '', is_active: true })
 const bookingForm = reactive({
   id: 0,
   room_id: 0,
@@ -153,6 +184,14 @@ const recurringForm = reactive({
   note: '',
 })
 const isAdmin = computed(() => user.value?.role === '管理员')
+const desktopTitle = computed(() => ({
+  schedule: '会议室预约',
+  mine: '我的预约',
+  'admin-bookings': '预约管理',
+  'admin-rooms': '会议室管理',
+  'admin-recurring': '周期预约管理',
+  'admin-stats': '统计信息',
+}[desktopView.value]))
 const mobileTitle = computed(() => {
   if (activeTab.value === 'home') return '医务科会议室'
   if (activeTab.value === 'schedule') return '预定会议室'
@@ -165,14 +204,25 @@ const mobileTitle = computed(() => {
 const hourOptions = Array.from({ length: 17 }, (_, i) => String(i + 7).padStart(2, '0'))
 const endHourOptions = Array.from({ length: 17 }, (_, i) => String(i + 8).padStart(2, '0'))
 const minuteOptions = ['00', '30']
+const desktopHours = Array.from({ length: 18 }, (_, index) => index + 7)
 const normalMyBookings = computed(() => myBookings.value.filter((booking) => !booking.recurring_series_id))
 const upcoming = computed(() => normalMyBookings.value.filter((booking) => booking.status === 'active' && new Date(booking.end_at) > new Date()))
 const finished = computed(() => normalMyBookings.value.filter((booking) => booking.status === 'active' && new Date(booking.end_at) <= new Date()))
 const cancelled = computed(() => normalMyBookings.value.filter((booking) => booking.status === 'cancelled'))
+const desktopMyBookingRows = computed(() => {
+  if (desktopMineView.value === 'upcoming') return upcoming.value
+  if (desktopMineView.value === 'finished') return finished.value
+  if (desktopMineView.value === 'cancelled') return cancelled.value
+  return []
+})
 const activeMyRecurringSeries = computed(() => myRecurringSeries.value.filter((series) => series.status === 'active' && series.future_active_booking_count > 0))
 const hasMineContent = computed(() => activeMyRecurringSeries.value.length > 0 || normalMyBookings.value.length > 0)
 const visibleScheduleRooms = computed(() => schedule.value?.rooms || [])
 const recurringActiveRooms = computed(() => rooms.value.filter((room) => room.is_active))
+const recurringRoomsByCampus = computed(() => CAMPUS_OPTIONS.map((campus) => ({
+  campus,
+  rooms: recurringActiveRooms.value.filter((room) => room.campus === campus),
+})).filter((group) => group.rooms.length > 0))
 const recurringSummary = computed(() => {
   const result = recurringResult.value
   if (!result) return ''
@@ -185,15 +235,20 @@ const recurringSeriesCancelSummary = computed(() => {
 })
 
 
+const adminCampusRooms = computed(() => rooms.value.filter((room) => adminRoomCampus.value === 'all' || room.campus === adminRoomCampus.value))
+
 const adminFilteredRooms = computed(() => {
-  if (adminRoomStatus.value === 'active') return rooms.value.filter((room) => room.is_active)
-  if (adminRoomStatus.value === 'disabled') return rooms.value.filter((room) => !room.is_active)
-  return rooms.value
+  return adminCampusRooms.value.filter((room) => {
+    if (adminRoomStatus.value === 'active') return room.is_active
+    if (adminRoomStatus.value === 'disabled') return !room.is_active
+    return true
+  })
 })
 
 const adminFilteredBookings = computed(() => {
   const target = adminBookingDate.value
   return allBookings.value.filter((booking) => {
+    if (adminBookingCampus.value !== 'all' && bookingCampus(booking) !== adminBookingCampus.value) return false
     const sameDate = dateInputInShanghai(new Date(booking.start_at)) === target
     if (!sameDate) return false
     if (adminBookingStatus.value === 'cancelled') return booking.status === 'cancelled'
@@ -206,6 +261,27 @@ const adminFilteredBookings = computed(() => {
 
 const selectedRoomSchedule = computed(() => schedule.value?.rooms.find((item) => item.room.id === bookingForm.room_id))
 const nowTick = ref(Date.now())
+
+function campusStorageKey(staffId: string) {
+  return `meeting_room_selected_campus_${staffId}`
+}
+
+function restoreSelectedCampus(currentUser: User) {
+  const saved = localStorage.getItem(campusStorageKey(currentUser.staff_id)) as Campus | null
+  selectedCampus.value = saved && CAMPUS_OPTIONS.includes(saved) ? saved : '庆春'
+}
+
+watch(selectedCampus, (campus) => {
+  if (user.value) localStorage.setItem(campusStorageKey(user.value.staff_id), campus)
+})
+
+function bookingCampus(booking: Booking) {
+  return booking.campus || booking.room.campus
+}
+
+function recurringCampus(series: RecurringSeries) {
+  return series.campus || series.room.campus
+}
 
 const mobileSlots = computed(() => {
   const bookings = selectedRoomSchedule.value?.bookings || []
@@ -238,7 +314,7 @@ const BookingItem = defineComponent({
       h('article', { class: 'booking-row' }, [
         h('span', `${formatLocalMonthDay(props.booking.start_at)} ${formatLocalTime(props.booking.start_at)} - ${formatLocalTime(props.booking.end_at)}`),
         h('strong', props.booking.title),
-        h('small', `${props.booking.room.name} · ${props.booking.user_name || props.booking.applicant.name} · ${props.booking.status === 'active' ? '有效' : '已取消'}`),
+        h('small', `${bookingCampus(props.booking)} · ${props.booking.room.name} · ${props.booking.user_name || props.booking.applicant.name} · ${props.booking.status === 'active' ? '有效' : '已取消'}`),
         props.booking.status === 'active' && new Date(props.booking.end_at) > new Date()
           ? h('div', { class: 'row-actions' }, [
               h('button', { onClick: () => emit('edit', undefined, props.booking) }, '编辑'),
@@ -287,6 +363,8 @@ async function loadMe() {
   }
   try {
     user.value = await api.me()
+    restoreSelectedCampus(user.value)
+    if (user.value.role !== '管理员' && desktopView.value.startsWith('admin-')) desktopView.value = 'schedule'
   } catch {
     setToken(null)
   } finally {
@@ -299,7 +377,9 @@ async function login() {
     const result = await api.login(loginForm.staff_id.trim(), loginForm.password)
     setToken(result.access_token)
     user.value = result.user
+    restoreSelectedCampus(result.user)
     activeTab.value = 'home'
+    desktopView.value = 'schedule'
     await refreshAll()
   })
 }
@@ -314,7 +394,9 @@ async function registerUser() {
     })
     setToken(result.access_token)
     user.value = result.user
+    restoreSelectedCampus(result.user)
     activeTab.value = 'home'
+    desktopView.value = 'schedule'
     showMessage('注册成功')
     await refreshAll()
   })
@@ -326,6 +408,7 @@ function logout() {
   detailBooking.value = null
   mobileRoomSheetOpen.value = false
   mobileAdminView.value = 'home'
+  desktopView.value = 'schedule'
   activeTab.value = 'home'
 }
 
@@ -337,7 +420,7 @@ async function refreshAll() {
 
 async function loadSchedule() {
   nowTick.value = Date.now()
-  schedule.value = await api.schedule(selectedDate.value)
+  schedule.value = await api.schedule(selectedDate.value, selectedCampus.value)
 }
 
 async function refreshScheduleWithSkeleton() {
@@ -362,12 +445,23 @@ async function loadMine() {
 }
 
 async function loadAdminData() {
-  allBookings.value = await api.bookings()
+  await Promise.all([loadAdminBookings(), refreshAdminStatsData()])
+}
+
+async function loadAdminBookings() {
+  allBookings.value = await api.bookings(
+    adminBookingDate.value,
+    adminBookingCampus.value === 'all' ? undefined : adminBookingCampus.value,
+  )
+}
+
+async function refreshAdminStatsData() {
   stats.value = await api.stats()
 }
 
 
 function shiftDate(offset: number) {
+  clearDesktopTimelineSelection()
   const date = new Date(`${selectedDate.value}T00:00:00+08:00`)
   date.setDate(date.getDate() + offset)
   selectedDate.value = dateInputInShanghai(date)
@@ -379,6 +473,17 @@ function shiftAdminBookingDate(offset: number) {
   const date = new Date(`${adminBookingDate.value}T00:00:00+08:00`)
   date.setDate(date.getDate() + offset)
   adminBookingDate.value = dateInputInShanghai(date)
+  withLoading(loadAdminBookings)
+}
+
+function handleCampusChange() {
+  clearDesktopTimelineSelection()
+  bookingForm.booking_date = selectedDate.value
+  withLoading(loadSchedule)
+}
+
+function handleAdminBookingFilterChange() {
+  withLoading(loadAdminBookings)
 }
 
 function mobileBack() {
@@ -425,6 +530,34 @@ function slotEndIndexForEndTime(value: string) {
 
 function bookingOccupantText(booking: Booking) {
   return `已被 ${booking.department || booking.applicant.department} ${booking.user_name || booking.applicant.name} 预定 · ${booking.title}`
+}
+
+function hideDesktopBookingPreview() {
+  window.clearTimeout(desktopPreviewTimer)
+  desktopPreviewTimer = undefined
+  desktopBookingPreview.value = null
+}
+
+function showDesktopBookingPreview(event: Event, booking: Booking) {
+  window.clearTimeout(desktopPreviewTimer)
+  const target = event.currentTarget as HTMLElement
+  desktopPreviewTimer = window.setTimeout(() => {
+    if (!target.isConnected) return
+    const rect = target.getBoundingClientRect()
+    const previewWidth = 288
+    const viewportGap = 12
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2 - previewWidth / 2, viewportGap),
+      window.innerWidth - previewWidth - viewportGap,
+    )
+    const placement = rect.top >= 150 ? 'above' : 'below'
+    desktopBookingPreview.value = {
+      booking,
+      left,
+      top: placement === 'above' ? rect.top - 10 : rect.bottom + 10,
+      placement,
+    }
+  }, 180)
 }
 
 function bookingDateTimeText(booking: Booking) {
@@ -652,6 +785,9 @@ async function saveBooking() {
     bookingForm.title = ''
     bookingForm.note = ''
     mobileBookingOpen.value = false
+    desktopBookingDrawerOpen.value = false
+    selectedSlotStart.value = null
+    selectedSlotEnd.value = null
     showMessage('预约已保存')
     await refreshAll()
   })
@@ -667,6 +803,8 @@ async function cancelBooking(booking: Booking) {
 
 function editRoom(room?: Room) {
   roomForm.id = room?.id || 0
+  roomForm.campus = room?.campus || (adminRoomCampus.value === 'all' ? '庆春' : adminRoomCampus.value)
+  roomForm.campus_locked = room?.campus_locked ?? false
   roomForm.name = room?.name || ''
   roomForm.location = room?.location || ''
   roomForm.capacity = room?.capacity || 10
@@ -691,7 +829,7 @@ async function adminCancelBooking(booking: Booking) {
 
 async function refreshAdminStats() {
   await withLoading(async () => {
-    stats.value = await api.stats()
+    await refreshAdminStatsData()
     showMessage('统计已刷新')
   })
 }
@@ -803,6 +941,7 @@ async function saveRoom() {
   if (roomForm.id && roomOriginalActive.value && !roomForm.is_active && !window.confirm('该会议室可能已有未来预约，停用后不会自动取消已有预约，确认停用？')) return
   await withLoading(async () => {
     const payload = {
+      campus: roomForm.campus,
       name: roomForm.name.trim(),
       location: roomForm.location.trim(),
       capacity: Number(roomForm.capacity),
@@ -822,6 +961,7 @@ async function toggleRoomStatus(room: Room) {
   if (room.is_active && !window.confirm('停用后不能产生新预约，但不会取消已有预约。确认停用该会议室？')) return
   await withLoading(async () => {
     await api.updateRoom(room.id, {
+      campus: room.campus,
       name: room.name,
       location: room.location,
       capacity: room.capacity,
@@ -830,6 +970,179 @@ async function toggleRoomStatus(room: Room) {
     })
     showMessage(room.is_active ? '会议室已停用' : '会议室已启用')
     await refreshAll()
+  })
+}
+
+function setDesktopView(view: DesktopView) {
+  if (view.startsWith('admin-') && !isAdmin.value) return
+  if (view !== 'schedule') clearDesktopTimelineSelection()
+  desktopView.value = view
+  if (view === 'admin-recurring') withLoading(loadDesktopRecurringSeries)
+}
+
+function clearDesktopTimelineSelection() {
+  selectedSlotStart.value = null
+  selectedSlotEnd.value = null
+  selectedRoom.value = null
+}
+
+function handleDesktopScheduleDateChange() {
+  clearDesktopTimelineSelection()
+  bookingForm.booking_date = selectedDate.value
+  withLoading(loadSchedule)
+}
+
+function desktopGoToday() {
+
+  selectedDate.value = dateInputInShanghai()
+  bookingForm.booking_date = selectedDate.value
+  withLoading(loadSchedule)
+}
+
+function desktopBookingDateText(booking: Booking) {
+  return mobileDateLabel(dateInputInShanghai(new Date(booking.start_at)))
+}
+
+function desktopSlotExpired(slotEndMinutes: number) {
+  const today = dateInputInShanghai(new Date(nowTick.value))
+  if (selectedDate.value < today) return true
+  if (selectedDate.value > today) return false
+  const timeText = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' }).format(new Date(nowTick.value))
+  const [hour, minute] = timeText.split(':').map(Number)
+  return slotEndMinutes <= hour * 60 + minute
+}
+
+function desktopSlotsForRoom(item: DaySchedule['rooms'][number]) {
+  return Array.from({ length: 34 }, (_, index) => {
+    const start = 7 * 60 + index * 30
+    const end = start + 30
+    const occupiedBy = item.bookings.find((booking) => {
+      if (bookingForm.id && booking.id === bookingForm.id) return false
+      const bookingStart = localMinutes(booking.start_at)
+      const bookingEnd = localMinutes(booking.end_at)
+      return bookingStart < end && bookingEnd > start
+    })
+    return {
+      index,
+      occupiedBy,
+      expired: desktopSlotExpired(end),
+      selected: selectedRoom.value?.id === item.room.id && isSlotSelected(index),
+    }
+  })
+}
+
+function initializeDesktopBooking(room: Room, booking?: Booking) {
+  nowTick.value = Date.now()
+  selectedRoom.value = booking?.room || room
+  bookingForm.id = booking?.id || 0
+  bookingForm.room_id = booking?.room.id || room.id
+  bookingForm.booking_date = booking ? dateInputInShanghai(new Date(booking.start_at)) : selectedDate.value
+  bookingForm.title = booking?.title || ''
+  bookingForm.attendee_count = booking?.attendee_count || 1
+  bookingForm.note = booking?.note || ''
+  if (booking) {
+    bookingForm.start_hour = formatLocalTime(booking.start_at).slice(0, 2)
+    bookingForm.start_minute = formatLocalTime(booking.start_at).slice(3, 5)
+    const endText = formatLocalTime(booking.end_at)
+    bookingForm.end_hour = endText === '00:00' && booking.end_at.slice(0, 10) !== booking.start_at.slice(0, 10) ? '24' : endText.slice(0, 2)
+    bookingForm.end_minute = bookingForm.end_hour === '24' ? '00' : endText.slice(3, 5)
+    selectedSlotStart.value = slotIndexForTime(`${bookingForm.start_hour}:${bookingForm.start_minute}`)
+    selectedSlotEnd.value = slotEndIndexForEndTime(`${bookingForm.end_hour}:${bookingForm.end_minute}`)
+  } else {
+    bookingForm.title = ''
+    bookingForm.attendee_count = 1
+    bookingForm.note = ''
+  }
+}
+
+function chooseDesktopSlot(item: DaySchedule['rooms'][number], index: number) {
+  hideDesktopBookingPreview()
+  const slots = desktopSlotsForRoom(item)
+  const slot = slots[index]
+  if (!slot) return
+  if (slot.occupiedBy) {
+    openBookingDetail(slot.occupiedBy)
+    return
+  }
+  if (slot.expired) return
+
+  if (selectedRoom.value?.id !== item.room.id || selectedSlotStart.value === null || selectedSlotEnd.value === null) {
+    initializeDesktopBooking(item.room)
+    selectedSlotStart.value = index
+    selectedSlotEnd.value = index
+    return
+  }
+
+  const start = Math.min(selectedSlotStart.value, index)
+  const end = Math.max(selectedSlotStart.value, index)
+  const blocked = slots.slice(start, end + 1).some((candidate) => candidate.occupiedBy || candidate.expired)
+  if (blocked) {
+    showError('所选时间包含已占用或已过期时段')
+    selectedSlotStart.value = index
+    selectedSlotEnd.value = index
+    return
+  }
+  selectedSlotStart.value = start
+  selectedSlotEnd.value = end
+  applySelectedSlotsToForm()
+  desktopBookingDrawerOpen.value = true
+}
+
+function prepareDesktopBooking(booking: Booking) {
+  initializeDesktopBooking(booking.room, booking)
+  desktopBookingDrawerOpen.value = true
+}
+
+function closeDesktopBookingDrawer() {
+  desktopBookingDrawerOpen.value = false
+  clearDesktopTimelineSelection()
+  bookingForm.id = 0
+}
+
+async function cancelDesktopBooking(booking: Booking) {
+  if (!window.confirm('确认取消这条预约？')) return
+  await cancelBooking(booking)
+}
+
+async function loadDesktopRecurringSeries() {
+  desktopRecurringSeriesList.value = await api.recurringSeries(desktopRecurringStatus.value)
+}
+
+function openDesktopRecurringCreate() {
+  initRecurringCreateForm()
+  desktopSelectedSeries.value = null
+  desktopRecurringDrawerOpen.value = true
+}
+
+function openDesktopRecurringDetail(series: RecurringSeries) {
+  desktopSelectedSeries.value = series
+  recurringResult.value = null
+  desktopRecurringDrawerOpen.value = true
+}
+
+function closeDesktopRecurringDrawer() {
+  desktopRecurringDrawerOpen.value = false
+  desktopSelectedSeries.value = null
+  recurringResult.value = null
+}
+
+async function createDesktopRecurringBookings() {
+  await withLoading(async () => {
+    recurringResult.value = await api.createRecurringBookings(recurringPayload())
+    showMessage(recurringSummary.value)
+    desktopRecurringDrawerOpen.value = false
+    await Promise.all([refreshAll(), loadDesktopRecurringSeries()])
+  })
+}
+
+async function cancelDesktopRecurringSeries(series: RecurringSeries) {
+  if (!window.confirm(`确认取消「${series.title}」？将取消该周期组下 ${series.future_active_booking_count} 条未来有效预约。`)) return
+  await withLoading(async () => {
+    recurringSeriesCancelResult.value = await api.cancelRecurringSeries(series.id)
+    showMessage(recurringSeriesCancelSummary.value)
+    desktopSelectedSeries.value = null
+    desktopRecurringDrawerOpen.value = false
+    await Promise.all([refreshAll(), loadDesktopRecurringSeries()])
   })
 }
 
@@ -849,6 +1162,7 @@ function bookingBarStyle(booking: Booking) {
 onMounted(async () => {
   await loadMe()
   await refreshAll()
+  if (isAdmin.value && desktopView.value === 'admin-recurring') await loadDesktopRecurringSeries()
 })
 </script>
 
@@ -916,6 +1230,12 @@ onMounted(async () => {
         </section>
 
         <section v-show="activeTab === 'schedule'" class="mobile-schedule">
+          <label class="mobile-campus-select">
+            <span>院区</span>
+            <select v-model="selectedCampus" @change="handleCampusChange">
+              <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
+            </select>
+          </label>
           <div class="mobile-filters">
             <button @click="shiftDate(-1)"><ChevronLeft :size="18" /></button>
             <label class="mobile-date-picker"><span>{{ mobileDateLabel(selectedDate) }}</span><input v-model="selectedDate" type="date" @change="withLoading(loadSchedule)" /></label>
@@ -934,7 +1254,7 @@ onMounted(async () => {
               <div class="skeleton-timeline"><span></span><em></em></div>
             </div>
           </div>
-          <div v-else-if="visibleScheduleRooms.length === 0" class="empty mobile-empty">暂无可预定会议室</div>
+          <div v-else-if="visibleScheduleRooms.length === 0" class="empty mobile-empty">{{ selectedCampus }}院区暂无可预定会议室</div>
           <article v-else v-for="item in visibleScheduleRooms" :key="item.room.id" class="mobile-room-card" @click="prepareBooking(item.room)">
             <div class="room-icon"><MonitorUp :size="30" /></div>
             <div class="mobile-room-main">
@@ -967,6 +1287,7 @@ onMounted(async () => {
             <div class="upcoming-card-list">
               <article v-for="series in activeMyRecurringSeries" :key="series.id" class="upcoming-card recurring-card">
                 <h3>{{ series.title }}</h3>
+                <p><strong>院区：</strong>{{ recurringCampus(series) }}</p>
                 <p><strong>会议室：</strong>{{ series.room.name }}</p>
                 <p><strong>周期：</strong>{{ recurringSeriesShortText(series) }}</p>
                 <p><strong>日期：</strong>{{ series.start_date }} 至 {{ series.end_date }}</p>
@@ -978,6 +1299,7 @@ onMounted(async () => {
               <article v-for="booking in upcoming" :key="booking.id" class="upcoming-card">
                 <h3>{{ booking.room.name }}</h3>
                 <p><strong>时间：</strong>{{ bookingDateTimeText(booking) }}</p>
+                <p><strong>院区：</strong>{{ bookingCampus(booking) }}</p>
                 <p><strong>地址：</strong>{{ booking.room.location || '暂无' }}</p>
                 <div class="upcoming-actions">
                   <button @click="releaseBooking(booking)">释放会议室</button>
@@ -1017,9 +1339,16 @@ onMounted(async () => {
           </div>
 
           <section v-else-if="mobileAdminView === 'bookings'" class="admin-subpage">
+            <label class="mobile-campus-select admin-campus-select">
+              <span>院区</span>
+              <select v-model="adminBookingCampus" @change="handleAdminBookingFilterChange">
+                <option value="all">全部院区</option>
+                <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
+              </select>
+            </label>
             <div class="mobile-filters">
               <button @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="18" /></button>
-              <label class="mobile-date-picker"><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" /></label>
+              <label class="mobile-date-picker"><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" @change="handleAdminBookingFilterChange" /></label>
               <button @click="shiftAdminBookingDate(1)"><ChevronRight :size="18" /></button>
               <button class="reset" @click="withLoading(loadAdminData)">刷新</button>
             </div>
@@ -1031,6 +1360,7 @@ onMounted(async () => {
             <div v-if="adminFilteredBookings.length === 0" class="empty mobile-empty">暂无预约</div>
             <article v-for="booking in adminFilteredBookings" :key="booking.id" class="admin-list-card">
               <h3>{{ booking.room.name }}</h3>
+              <p><strong>院区：</strong>{{ bookingCampus(booking) }}</p>
               <p><strong>时间：</strong>{{ bookingDateTimeText(booking) }}</p>
               <p><strong>使用人：</strong>{{ booking.department || booking.applicant.department }} {{ booking.user_name || booking.applicant.name }}</p>
               <p><strong>会议：</strong>{{ booking.title }}</p>
@@ -1042,6 +1372,13 @@ onMounted(async () => {
           </section>
 
           <section v-else-if="mobileAdminView === 'rooms'" class="admin-subpage">
+            <label class="mobile-campus-select admin-campus-select">
+              <span>院区</span>
+              <select v-model="adminRoomCampus">
+                <option value="all">全部院区</option>
+                <option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option>
+              </select>
+            </label>
             <div class="admin-toolbar">
               <div class="segmented-control compact">
                 <button :class="{ active: adminRoomStatus === 'all' }" @click="adminRoomStatus = 'all'">全部</button>
@@ -1054,6 +1391,7 @@ onMounted(async () => {
             <article v-for="room in adminFilteredRooms" :key="room.id" class="admin-list-card room-admin-card">
               <div>
                 <h3>{{ room.name }}</h3>
+                <p>{{ room.campus }}院区</p>
                 <p>{{ room.location || '暂无地址' }} · {{ room.capacity }}人</p>
                 <p>{{ room.description || '暂无备注' }}</p>
               </div>
@@ -1082,7 +1420,8 @@ onMounted(async () => {
               <p>{{ roomForm.is_active ? '当前启用' : '当前停用' }}</p>
             </div>
             <form class="form-stack sheet-form" @submit.prevent="saveRoom">
-              <label>名称<input v-model="roomForm.name" required /></label>
+              <label><span>院区 <b class="required-star">*</b></span><select v-model="roomForm.campus" :disabled="roomForm.campus_locked" required><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select><small v-if="roomForm.campus_locked" class="form-hint">已有预约或周期记录，院区不可修改</small></label>
+              <label><span>名称 <b class="required-star">*</b></span><input v-model="roomForm.name" required /></label>
               <label>位置<input v-model="roomForm.location" /></label>
               <label>容量<input v-model.number="roomForm.capacity" type="number" min="1" required /></label>
               <label>备注/设备<textarea v-model="roomForm.description" rows="3" /></label>
@@ -1150,6 +1489,7 @@ onMounted(async () => {
             </div>
             <div class="detail-list">
               <div><span>会议室</span><strong>{{ detailBooking.room.name }}</strong></div>
+              <div><span>院区</span><strong>{{ bookingCampus(detailBooking) }}</strong></div>
               <div><span>时间</span><strong>{{ bookingDateTimeText(detailBooking) }}</strong></div>
               <div><span>地址</span><strong>{{ detailBooking.room.location || '暂无' }}</strong></div>
               <div><span>部门</span><strong>{{ detailBooking.department || detailBooking.applicant.department }}</strong></div>
@@ -1187,7 +1527,7 @@ onMounted(async () => {
 
             <template v-else-if="recurringMode === 'create'">
               <form class="form-stack sheet-form" @submit.prevent="previewRecurringBookings">
-                <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="recurringForm.room_id" required><option v-for="room in recurringActiveRooms" :key="room.id" :value="room.id">{{ room.name }}</option></select></label>
+                <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="recurringForm.room_id" required><optgroup v-for="group in recurringRoomsByCampus" :key="group.campus" :label="group.campus"><option v-for="room in group.rooms" :key="room.id" :value="room.id">{{ room.name }}</option></optgroup></select></label>
                 <div class="time-grid"><label><span>开始日期 <b class="required-star">*</b></span><input v-model="recurringForm.start_date" type="date" required /></label><label><span>结束日期 <b class="required-star">*</b></span><input v-model="recurringForm.end_date" type="date" required /></label></div>
                 <div class="weekday-grid">
                   <button v-for="item in weekdayOptions" :key="item.value" type="button" :class="{ active: recurringForm.weekdays.includes(item.value) }" @click="toggleRecurringWeekday(item.value)">{{ item.label }}</button>
@@ -1217,6 +1557,7 @@ onMounted(async () => {
                 <div v-if="recurringSeriesList.length === 0" class="empty mobile-empty">暂无可取消的周期会议</div>
                 <article v-for="series in recurringSeriesList" :key="series.id" class="admin-list-card">
                   <h3>{{ series.title }}</h3>
+                  <p><strong>院区：</strong>{{ recurringCampus(series) }}</p>
                   <p><strong>会议室：</strong>{{ series.room.name }}</p>
                   <p><strong>周期：</strong>{{ recurringSeriesText(series) }}</p>
                   <p><strong>使用人：</strong>{{ series.department || series.created_by.department }} {{ series.user_name || series.created_by.name }}</p>
@@ -1235,150 +1576,269 @@ onMounted(async () => {
       <div v-if="notice || error" class="toast" :class="{ error: !!error }">{{ error || notice }}</div>
 
       <section class="desktop-app">
-        <header class="topbar">
-          <div><strong>{{ user?.name }}</strong><span>{{ user?.department }} · {{ user?.role }}</span></div>
-          <button class="icon-button" @click="logout" title="退出登录"><LogOut :size="18" /></button>
-        </header>
+        <div class="pc-shell">
+          <aside class="pc-sidebar">
+            <div class="pc-brand">
+              <span class="pc-brand-icon"><MonitorUp :size="24" /></span>
+              <div class="pc-brand-copy"><strong>医务科会议室</strong><small>预约管理系统</small></div>
+            </div>
 
-        <nav class="tabs">
-          <button :class="{ active: activeTab === 'schedule' || activeTab === 'home' }" @click="activeTab = 'schedule'"><CalendarDays :size="17" />预约</button>
-          <button :class="{ active: activeTab === 'mine' }" @click="activeTab = 'mine'"><UserRound :size="17" />我的</button>
-          <button v-if="isAdmin" :class="{ active: activeTab === 'admin' }" @click="activeTab = 'admin'"><Shield :size="17" />管理</button>
-        </nav>
+            <nav class="pc-navigation" aria-label="主要导航">
+              <button title="会议室预约" :class="{ active: desktopView === 'schedule' }" @click="setDesktopView('schedule')"><CalendarDays :size="20" /><span>会议室预约</span></button>
+              <button title="我的预约" :class="{ active: desktopView === 'mine' }" @click="setDesktopView('mine')"><UserRound :size="20" /><span>我的预约</span></button>
+              <template v-if="isAdmin">
+                <p>管理后台</p>
+                <button title="预约管理" :class="{ active: desktopView === 'admin-bookings' }" @click="setDesktopView('admin-bookings')"><CalendarCheck :size="20" /><span>预约管理</span></button>
+                <button title="会议室管理" :class="{ active: desktopView === 'admin-rooms' }" @click="setDesktopView('admin-rooms')"><MonitorUp :size="20" /><span>会议室管理</span></button>
+                <button title="周期预约管理" :class="{ active: desktopView === 'admin-recurring' }" @click="setDesktopView('admin-recurring')"><RefreshCcw :size="20" /><span>周期预约管理</span></button>
+                <button title="统计信息" :class="{ active: desktopView === 'admin-stats' }" @click="setDesktopView('admin-stats')"><BarChart3 :size="20" /><span>统计信息</span></button>
+              </template>
+            </nav>
 
+            <footer class="pc-sidebar-footer">
+              <span class="pc-user-avatar">{{ user?.name?.slice(0, 1) }}</span>
+              <div class="pc-user-copy"><strong>{{ user?.name }}</strong><small>{{ user?.department }} · {{ user?.role }}</small></div>
+              <button title="退出登录" @click="logout"><LogOut :size="19" /></button>
+            </footer>
+          </aside>
 
+          <div class="pc-workspace">
+            <header class="pc-header">
+              <div><span>医务科会议室</span><h1>{{ desktopTitle }}</h1></div>
+            </header>
 
-        <section v-show="activeTab === 'schedule' || activeTab === 'home'" class="layout">
-          <div class="content-column">
-            <div class="date-bar"><button @click="shiftDate(-1)">前一天</button><input v-model="selectedDate" type="date" @change="withLoading(loadSchedule)" /><button @click="shiftDate(1)">后一天</button></div>
-            <h2>{{ formatLocalDate(selectedDate) }}</h2>
-            <div v-if="schedule?.rooms.length === 0" class="empty">暂无启用会议室，请管理员先维护会议室。</div>
-            <article v-for="item in schedule?.rooms" :key="item.room.id" class="room-card">
-              <div class="room-head"><div><h3>{{ item.room.name }}</h3><p>{{ item.room.location }} · {{ item.room.capacity }}人</p></div><button @click="prepareBooking(item.room)">预约</button></div>
-              <div v-if="item.bookings.length" class="booking-list compact"><div v-for="booking in item.bookings" :key="booking.id" class="booking-row busy"><span>{{ formatLocalTime(booking.start_at) }} - {{ formatLocalTime(booking.end_at) }}</span><strong>{{ booking.title }}</strong><small>{{ booking.user_name || booking.applicant.name }}</small></div></div>
-              <p v-else class="free-text">当天暂无预约</p>
-            </article>
+            <main class="pc-content">
+              <section v-show="desktopView === 'schedule'" class="pc-page">
+                <div class="pc-toolbar">
+                  <div class="pc-date-controls">
+                    <button class="icon-button" title="前一天" @click="shiftDate(-1)"><ChevronLeft :size="19" /></button>
+                    <label class="pc-date-picker"><span>{{ mobileDateLabel(selectedDate) }}</span><input v-model="selectedDate" type="date" @change="handleDesktopScheduleDateChange" /></label>
+                    <button class="icon-button" title="后一天" @click="shiftDate(1)"><ChevronRight :size="19" /></button>
+                    <button @click="desktopGoToday">今天</button>
+                    <button :disabled="scheduleRefreshing" @click="refreshScheduleWithSkeleton"><RefreshCcw :size="17" />{{ scheduleRefreshing ? '刷新中' : '刷新' }}</button>
+                    <label class="pc-campus-select"><span>院区</span><select v-model="selectedCampus" @change="handleCampusChange"><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label>
+                  </div>
+                  <span v-if="selectedSlotStart !== null && selectedRoom && !desktopBookingDrawerOpen" class="pc-selection-hint">{{ selectedRoom.name }} · 起点 {{ minutesToText(7 * 60 + selectedSlotStart * 30) }}，请再选择结束时段</span>
+                </div>
+
+                <div v-if="scheduleRefreshing" class="pc-loading-band">正在刷新会议室状态</div>
+                <div v-else-if="visibleScheduleRooms.length === 0" class="empty">{{ selectedCampus }}院区暂无可预定会议室</div>
+                <div v-else class="pc-schedule-table">
+                  <div class="pc-schedule-head">
+                    <span>会议室</span>
+                    <div class="pc-timeline-hours"><span v-for="hour in desktopHours" :key="hour">{{ hour }}</span></div>
+                  </div>
+                  <article v-for="item in visibleScheduleRooms" :key="item.room.id" class="pc-schedule-row">
+                    <div class="pc-room-summary">
+                      <strong>{{ item.room.name }}</strong>
+                      <span>{{ item.room.location || '暂无位置' }} · {{ item.room.capacity }}人</span>
+                      <small>{{ item.room.description || '暂无备注或设备说明' }}</small>
+                    </div>
+                    <div class="pc-slot-grid">
+                      <button
+                        v-for="slot in desktopSlotsForRoom(item)"
+                        :key="slot.index"
+                        :class="{ occupied: !!slot.occupiedBy, expired: slot.expired, selected: slot.selected }"
+                        :disabled="slot.expired"
+                        :title="slot.occupiedBy ? undefined : slot.expired ? '已过期' : `${minutesToText(7 * 60 + slot.index * 30)}-${minutesToText(7 * 60 + (slot.index + 1) * 30)}`"
+                        :aria-label="slot.occupiedBy ? bookingOccupantText(slot.occupiedBy) : slot.expired ? '已过期' : `${minutesToText(7 * 60 + slot.index * 30)}-${minutesToText(7 * 60 + (slot.index + 1) * 30)}`"
+                        @pointerenter="slot.occupiedBy && showDesktopBookingPreview($event, slot.occupiedBy)"
+                        @pointerleave="hideDesktopBookingPreview"
+                        @focus="slot.occupiedBy && showDesktopBookingPreview($event, slot.occupiedBy)"
+                        @blur="hideDesktopBookingPreview"
+                        @click="chooseDesktopSlot(item, slot.index)"
+                      />
+                    </div>
+                  </article>
+                </div>
+                <div class="pc-timeline-legend"><span class="expired">已过期</span><span class="occupied">已预约</span><span class="available">可预约</span></div>
+              </section>
+
+              <section v-show="desktopView === 'mine'" class="pc-page">
+                <div class="pc-tab-row">
+                  <button :class="{ active: desktopMineView === 'upcoming' }" @click="desktopMineView = 'upcoming'">即将开始 {{ upcoming.length }}</button>
+                  <button :class="{ active: desktopMineView === 'recurring' }" @click="desktopMineView = 'recurring'">周期会议 {{ activeMyRecurringSeries.length }}</button>
+                  <button :class="{ active: desktopMineView === 'finished' }" @click="desktopMineView = 'finished'">已结束 {{ finished.length }}</button>
+                  <button :class="{ active: desktopMineView === 'cancelled' }" @click="desktopMineView = 'cancelled'">已取消 {{ cancelled.length }}</button>
+                </div>
+
+                <div v-if="desktopMineView === 'recurring'" class="pc-data-table pc-recurring-table">
+                  <div class="pc-table-head"><span>会议名称</span><span>院区</span><span>会议室</span><span>重复规则</span><span>日期范围</span><span>未来预约</span><span>操作</span></div>
+                  <div v-if="activeMyRecurringSeries.length === 0" class="pc-table-empty">暂无周期会议</div>
+                  <article v-for="series in activeMyRecurringSeries" :key="series.id" class="pc-table-row">
+                    <strong>{{ series.title }}</strong><span>{{ recurringCampus(series) }}</span><span>{{ series.room.name }}</span><span>{{ recurringSeriesShortText(series) }}</span><span>{{ series.start_date }} 至 {{ series.end_date }}</span><span>{{ series.future_active_booking_count }} 次</span><button title="查看周期会议详情" @click="openDesktopRecurringDetail(series)"><Eye :size="16" />详情</button>
+                  </article>
+                </div>
+
+                <div v-else class="pc-data-table pc-my-table">
+                  <div class="pc-table-head"><span>日期</span><span>时间</span><span>院区</span><span>会议室</span><span>会议名称</span><span>位置</span><span>操作</span></div>
+                  <div v-if="desktopMyBookingRows.length === 0" class="pc-table-empty">当前分类暂无预约</div>
+                  <article v-for="booking in desktopMyBookingRows" :key="booking.id" class="pc-table-row">
+                    <span>{{ desktopBookingDateText(booking) }}</span>
+                    <strong>{{ formatLocalTime(booking.start_at) }}-{{ formatLocalTime(booking.end_at) }}</strong>
+                    <span>{{ bookingCampus(booking) }}</span>
+                    <span>{{ booking.room.name }}</span>
+                    <span>{{ booking.title }}</span>
+                    <span>{{ booking.room.location || '暂无位置' }}</span>
+                    <div class="pc-row-actions">
+                      <button title="查看会议详情" @click="openBookingDetail(booking)"><Eye :size="16" />详情</button>
+                      <button v-if="desktopMineView === 'upcoming'" title="修改预约" @click="prepareDesktopBooking(booking)"><Pencil :size="16" />修改</button>
+                      <button v-if="desktopMineView === 'upcoming'" class="danger" title="取消预约" @click="cancelDesktopBooking(booking)"><XCircle :size="16" />取消</button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section v-if="isAdmin" v-show="desktopView === 'admin-bookings'" class="pc-page">
+                <div class="pc-toolbar">
+                  <div class="pc-date-controls">
+                    <button class="icon-button" title="前一天" @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="19" /></button>
+                    <label class="pc-date-picker"><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" @change="handleAdminBookingFilterChange" /></label>
+                    <button class="icon-button" title="后一天" @click="shiftAdminBookingDate(1)"><ChevronRight :size="19" /></button>
+                    <button @click="withLoading(loadAdminBookings)"><RefreshCcw :size="17" />刷新</button>
+                    <label class="pc-campus-select"><span>院区</span><select v-model="adminBookingCampus" @change="handleAdminBookingFilterChange"><option value="all">全部院区</option><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label>
+                  </div>
+                </div>
+                <div class="pc-tab-row compact">
+                  <button :class="{ active: adminBookingStatus === 'active' }" @click="adminBookingStatus = 'active'">有效</button>
+                  <button :class="{ active: adminBookingStatus === 'finished' }" @click="adminBookingStatus = 'finished'">已结束</button>
+                  <button :class="{ active: adminBookingStatus === 'cancelled' }" @click="adminBookingStatus = 'cancelled'">已取消</button>
+                </div>
+                <div class="pc-data-table pc-admin-booking-table">
+                  <div class="pc-table-head"><span>时间</span><span>院区</span><span>会议室</span><span>会议名称</span><span>科室 / 使用人</span><span>状态</span><span>操作</span></div>
+                  <div v-if="adminFilteredBookings.length === 0" class="pc-table-empty">当前条件下暂无预约</div>
+                  <article v-for="booking in adminFilteredBookings" :key="booking.id" class="pc-table-row">
+                    <strong>{{ formatLocalTime(booking.start_at) }}-{{ formatLocalTime(booking.end_at) }}</strong>
+                    <span>{{ bookingCampus(booking) }}</span>
+                    <span>{{ booking.room.name }}</span>
+                    <span>{{ booking.title }}</span>
+                    <span>{{ booking.department || booking.applicant.department }} · {{ booking.user_name || booking.applicant.name }}</span>
+                    <span><b :class="['pc-status', booking.status === 'cancelled' ? 'disabled' : 'active']">{{ booking.status === 'cancelled' ? '已取消' : adminBookingStatus === 'finished' ? '已结束' : '有效' }}</b></span>
+                    <div class="pc-row-actions">
+                      <button title="查看会议详情" @click="openBookingDetail(booking)"><Eye :size="16" />详情</button>
+                      <button v-if="booking.status === 'active' && new Date(booking.end_at) > new Date()" class="danger" title="取消预约" @click="adminCancelBooking(booking)"><XCircle :size="16" />取消</button>
+                    </div>
+                  </article>
+                </div>
+              </section>
+
+              <section v-if="isAdmin" v-show="desktopView === 'admin-rooms'" class="pc-page">
+                <div class="pc-toolbar">
+                  <div class="pc-room-filters"><label class="pc-campus-select"><span>院区</span><select v-model="adminRoomCampus"><option value="all">全部院区</option><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select></label><div class="pc-tab-row compact">
+                    <button :class="{ active: adminRoomStatus === 'all' }" @click="adminRoomStatus = 'all'">全部 {{ adminCampusRooms.length }}</button>
+                    <button :class="{ active: adminRoomStatus === 'active' }" @click="adminRoomStatus = 'active'">启用 {{ adminCampusRooms.filter((room) => room.is_active).length }}</button>
+                    <button :class="{ active: adminRoomStatus === 'disabled' }" @click="adminRoomStatus = 'disabled'">停用 {{ adminCampusRooms.filter((room) => !room.is_active).length }}</button>
+                  </div></div>
+                  <button class="primary" @click="openMobileRoomSheet()"><Plus :size="18" />新增会议室</button>
+                </div>
+                <div class="pc-data-table pc-room-table">
+                  <div class="pc-table-head"><span>院区</span><span>会议室</span><span>位置</span><span>容量</span><span>备注 / 设备</span><span>状态</span><span>操作</span></div>
+                  <div v-if="adminFilteredRooms.length === 0" class="pc-table-empty">当前条件下暂无会议室</div>
+                  <article v-for="room in adminFilteredRooms" :key="room.id" class="pc-table-row">
+                    <span>{{ room.campus }}</span><strong>{{ room.name }}</strong><span>{{ room.location || '暂无位置' }}</span><span>{{ room.capacity }} 人</span><span>{{ room.description || '暂无' }}</span><span><b :class="['pc-status', room.is_active ? 'active' : 'disabled']">{{ room.is_active ? '启用' : '停用' }}</b></span>
+                    <div class="pc-row-actions"><button title="编辑会议室" @click="openMobileRoomSheet(room)"><Pencil :size="16" />编辑</button><button :class="{ danger: room.is_active }" :title="room.is_active ? '停用会议室' : '启用会议室'" @click="toggleRoomStatus(room)"><Power :size="16" />{{ room.is_active ? '停用' : '启用' }}</button></div>
+                  </article>
+                </div>
+              </section>
+
+              <section v-if="isAdmin" v-show="desktopView === 'admin-recurring'" class="pc-page">
+                <div class="pc-toolbar">
+                  <div class="pc-tab-row compact">
+                    <button :class="{ active: desktopRecurringStatus === 'active' }" @click="desktopRecurringStatus = 'active'; withLoading(loadDesktopRecurringSeries)">有效周期</button>
+                    <button :class="{ active: desktopRecurringStatus === 'cancelled' }" @click="desktopRecurringStatus = 'cancelled'; withLoading(loadDesktopRecurringSeries)">已取消</button>
+                  </div>
+                  <button class="primary" @click="openDesktopRecurringCreate"><Plus :size="18" />新建周期会议</button>
+                </div>
+                <div class="pc-data-table pc-series-table">
+                  <div class="pc-table-head"><span>会议名称</span><span>院区</span><span>会议室</span><span>重复星期</span><span>时间</span><span>日期范围</span><span>未来预约</span><span>操作</span></div>
+                  <div v-if="desktopRecurringSeriesList.length === 0" class="pc-table-empty">当前分类暂无周期会议</div>
+                  <article v-for="series in desktopRecurringSeriesList" :key="series.id" class="pc-table-row">
+                    <strong>{{ series.title }}</strong><span>{{ recurringCampus(series) }}</span><span>{{ series.room.name }}</span><span>{{ series.weekdays.map((day) => weekdayOptions.find((item) => item.value === day)?.label).join('、') }}</span><span>{{ series.start_time }}-{{ series.end_time }}</span><span>{{ series.start_date }} 至 {{ series.end_date }}</span><span>{{ series.future_active_booking_count }} 次</span>
+                    <div class="pc-row-actions"><button title="查看周期会议详情" @click="openDesktopRecurringDetail(series)"><Eye :size="16" />详情</button><button v-if="series.status === 'active'" class="danger" title="取消周期会议" @click="cancelDesktopRecurringSeries(series)"><XCircle :size="16" />取消</button></div>
+                  </article>
+                </div>
+              </section>
+
+              <section v-if="isAdmin" v-show="desktopView === 'admin-stats'" class="pc-page">
+                <div class="pc-toolbar"><span></span><button @click="refreshAdminStats"><RefreshCcw :size="17" />刷新</button></div>
+                <div class="pc-stats">
+                  <article><span>今日预约</span><strong>{{ stats.today_bookings || 0 }}</strong></article>
+                  <article><span>本周预约</span><strong>{{ stats.week_bookings || 0 }}</strong></article>
+                  <article><span>启用会议室</span><strong>{{ stats.active_rooms || 0 }}</strong></article>
+                </div>
+              </section>
+            </main>
           </div>
+        </div>
 
-          <aside class="booking-panel">
-            <h2>{{ bookingForm.id ? '修改预约' : '新建预约' }}</h2>
+        <div
+          v-if="desktopBookingPreview"
+          class="pc-booking-preview"
+          :class="desktopBookingPreview.placement"
+          :style="{ left: `${desktopBookingPreview.left}px`, top: `${desktopBookingPreview.top}px` }"
+          role="tooltip"
+        >
+          <strong>{{ desktopBookingPreview.booking.title }}</strong>
+          <span>{{ bookingCampus(desktopBookingPreview.booking) }} · {{ desktopBookingPreview.booking.room.name }} · {{ formatLocalTime(desktopBookingPreview.booking.start_at) }}-{{ formatLocalTime(desktopBookingPreview.booking.end_at) }}</span>
+          <small>{{ desktopBookingPreview.booking.department || desktopBookingPreview.booking.applicant.department }} · {{ desktopBookingPreview.booking.user_name || desktopBookingPreview.booking.applicant.name }}</small>
+        </div>
+
+        <div v-if="desktopBookingDrawerOpen" class="pc-drawer-mask" @click.self="closeDesktopBookingDrawer">
+          <aside class="pc-drawer pc-booking-drawer">
+            <header><div><span>预约信息</span><h2>{{ bookingForm.id ? '修改预约' : '新建预约' }}</h2></div><button class="icon-button" title="关闭" @click="closeDesktopBookingDrawer"><X :size="20" /></button></header>
             <form class="form-stack" @submit.prevent="saveBooking">
-              <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="bookingForm.room_id" required><option v-for="room in rooms.filter((r) => r.is_active)" :key="room.id" :value="room.id">{{ room.name }}</option></select></label>
-              <label>部门<input :value="user?.department || ''" readonly /></label>
-              <label>使用人<input :value="user?.name || ''" readonly /></label>
+              <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="bookingForm.room_id" required><optgroup v-for="group in recurringRoomsByCampus" :key="group.campus" :label="group.campus"><option v-for="room in group.rooms" :key="room.id" :value="room.id">{{ room.name }}</option></optgroup></select></label>
+              <div class="pc-readonly-grid"><label>部门<input :value="user?.department || ''" readonly /></label><label>使用人<input :value="user?.name || ''" readonly /></label></div>
               <label><span>日期 <b class="required-star">*</b></span><input v-model="bookingForm.booking_date" type="date" required /></label>
-              <div class="time-grid"><label>开始小时<select v-model="bookingForm.start_hour"><option v-for="h in hourOptions" :key="h">{{ h }}</option></select></label><label>开始分钟<select v-model="bookingForm.start_minute"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label><label>结束小时<select v-model="bookingForm.end_hour"><option v-for="h in endHourOptions" :key="h">{{ h }}</option></select></label><label>结束分钟<select v-model="bookingForm.end_minute" :disabled="bookingForm.end_hour === '24'"><option v-for="m in minuteOptions" :key="m">{{ m }}</option></select></label></div>
+              <div class="time-grid"><label>开始小时<select v-model="bookingForm.start_hour"><option v-for="hour in hourOptions" :key="hour">{{ hour }}</option></select></label><label>开始分钟<select v-model="bookingForm.start_minute"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label><label>结束小时<select v-model="bookingForm.end_hour"><option v-for="hour in endHourOptions" :key="hour">{{ hour }}</option></select></label><label>结束分钟<select v-model="bookingForm.end_minute" :disabled="bookingForm.end_hour === '24'"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label></div>
               <label><span>会议名称 <b class="required-star">*</b></span><input v-model="bookingForm.title" required /></label>
               <label><span>参会人数 <b class="required-star">*</b></span><input v-model.number="bookingForm.attendee_count" type="number" min="1" required /></label>
-              <label>备注 <textarea v-model="bookingForm.note" rows="3" /></label>
-              <button class="primary" :disabled="loading || !bookingForm.room_id"><Save :size="17" />保存预约</button>
-            </form>
-          </aside>
-        </section>
-
-        <section v-show="activeTab === 'mine'" class="content-column">
-          <h2>我的预约</h2><h3>周期会议</h3><div class="booking-list"><article v-for="series in activeMyRecurringSeries" :key="series.id" class="booking-row"><span>{{ series.room.name }}</span><strong>{{ series.title }}</strong><small>{{ recurringSeriesText(series) }} · 未来 {{ series.future_active_booking_count }} 次</small></article></div><h3>即将开始</h3><div class="booking-list"><BookingItem v-for="booking in upcoming" :key="booking.id" :booking="booking" @edit="prepareBooking" @cancel="cancelBooking" /></div><h3>已结束</h3><div class="booking-list"><BookingItem v-for="booking in finished" :key="booking.id" :booking="booking" /></div><h3>已取消</h3><div class="booking-list"><BookingItem v-for="booking in cancelled" :key="booking.id" :booking="booking" /></div>
-        </section>
-
-        <section v-if="isAdmin" v-show="activeTab === 'admin'" class="desktop-admin">
-          <header class="desktop-admin-header">
-            <div>
-              <span>管理后台</span>
-              <h2>{{ desktopAdminView === 'bookings' ? '预约管理' : desktopAdminView === 'rooms' ? '会议室管理' : desktopAdminView === 'recurring' ? '周期预约管理' : '统计信息' }}</h2>
-            </div>
-          </header>
-
-          <nav class="desktop-admin-tabs" aria-label="管理模块">
-            <button :class="{ active: desktopAdminView === 'bookings' }" @click="desktopAdminView = 'bookings'"><CalendarDays :size="18" />预约管理</button>
-            <button :class="{ active: desktopAdminView === 'rooms' }" @click="desktopAdminView = 'rooms'"><MonitorUp :size="18" />会议室管理</button>
-            <button :class="{ active: desktopAdminView === 'recurring' }" @click="desktopAdminView = 'recurring'"><CalendarCheck :size="18" />周期预约管理</button>
-            <button :class="{ active: desktopAdminView === 'stats' }" @click="desktopAdminView = 'stats'"><BarChart3 :size="18" />统计信息</button>
-          </nav>
-
-          <section v-show="desktopAdminView === 'bookings'" class="desktop-admin-module">
-            <div class="desktop-module-toolbar">
-              <div><h3>所有预约</h3></div>
-              <div class="desktop-date-controls">
-                <button class="icon-button" title="前一天" @click="shiftAdminBookingDate(-1)"><ChevronLeft :size="18" /></button>
-                <label><span>{{ mobileDateLabel(adminBookingDate) }}</span><input v-model="adminBookingDate" type="date" /></label>
-                <button class="icon-button" title="后一天" @click="shiftAdminBookingDate(1)"><ChevronRight :size="18" /></button>
-                <button @click="withLoading(loadAdminData)"><RefreshCcw :size="17" />刷新</button>
-              </div>
-            </div>
-            <div class="desktop-filter-row">
-              <button :class="{ active: adminBookingStatus === 'active' }" @click="adminBookingStatus = 'active'">有效</button>
-              <button :class="{ active: adminBookingStatus === 'finished' }" @click="adminBookingStatus = 'finished'">已结束</button>
-              <button :class="{ active: adminBookingStatus === 'cancelled' }" @click="adminBookingStatus = 'cancelled'">已取消</button>
-            </div>
-            <div v-if="adminFilteredBookings.length === 0" class="empty">当前条件下暂无预约</div>
-            <div v-else class="booking-list"><BookingItem v-for="booking in adminFilteredBookings" :key="booking.id" :booking="booking" @edit="prepareBooking" @cancel="cancelBooking" /></div>
-          </section>
-
-          <section v-show="desktopAdminView === 'rooms'" class="desktop-admin-module">
-            <div class="desktop-module-toolbar">
-              <div><h3>会议室列表</h3><p>共 {{ rooms.length }} 间，当前启用 {{ rooms.filter((room) => room.is_active).length }} 间</p></div>
-              <button class="primary" @click="openMobileRoomSheet()"><Plus :size="18" />新增会议室</button>
-            </div>
-            <div class="desktop-filter-row">
-              <button :class="{ active: adminRoomStatus === 'all' }" @click="adminRoomStatus = 'all'">全部 {{ rooms.length }}</button>
-              <button :class="{ active: adminRoomStatus === 'active' }" @click="adminRoomStatus = 'active'">启用 {{ rooms.filter((room) => room.is_active).length }}</button>
-              <button :class="{ active: adminRoomStatus === 'disabled' }" @click="adminRoomStatus = 'disabled'">停用 {{ rooms.filter((room) => !room.is_active).length }}</button>
-            </div>
-            <div v-if="adminFilteredRooms.length === 0" class="empty">当前条件下暂无会议室</div>
-            <div v-else class="desktop-room-table">
-              <div class="desktop-room-table-head"><span>会议室</span><span>位置</span><span>容量</span><span>状态</span><span>操作</span></div>
-              <article v-for="room in adminFilteredRooms" :key="room.id" class="desktop-room-row">
-                <div class="desktop-room-name"><strong>{{ room.name }}</strong><small>{{ room.description || '暂无备注或设备说明' }}</small></div>
-                <span>{{ room.location || '暂无位置' }}</span>
-                <span>{{ room.capacity }} 人</span>
-                <span><b :class="['desktop-status', room.is_active ? 'active' : 'disabled']">{{ room.is_active ? '启用' : '停用' }}</b></span>
-                <div class="desktop-room-actions">
-                  <button title="编辑会议室" @click="openMobileRoomSheet(room)"><Pencil :size="16" />编辑</button>
-                  <button :class="{ danger: room.is_active }" :title="room.is_active ? '停用会议室' : '启用会议室'" @click="toggleRoomStatus(room)"><Power :size="16" />{{ room.is_active ? '停用' : '启用' }}</button>
-                </div>
-              </article>
-            </div>
-          </section>
-
-          <section v-show="desktopAdminView === 'recurring'" class="desktop-admin-module">
-            <div class="desktop-module-toolbar"><div><h3>周期预约管理</h3></div></div>
-            <div class="desktop-action-grid">
-              <button @click="openRecurringSheet"><CalendarCheck :size="28" /><span><strong>预约周期会议</strong><small>每周重复，可多选星期并预览冲突</small></span><ChevronRight :size="20" /></button>
-              <button @click="openRecurringCancelSheet"><XCircle :size="28" /><span><strong>取消周期会议</strong><small>按周期组取消尚未开始的有效预约</small></span><ChevronRight :size="20" /></button>
-            </div>
-          </section>
-
-          <section v-show="desktopAdminView === 'stats'" class="desktop-admin-module">
-            <div class="desktop-module-toolbar"><div><h3>统计信息</h3></div><button @click="refreshAdminStats"><RefreshCcw :size="17" />刷新</button></div>
-            <div class="desktop-stats-grid">
-              <article><span>今日预约</span><strong>{{ stats.today_bookings || 0 }}</strong></article>
-              <article><span>本周预约</span><strong>{{ stats.week_bookings || 0 }}</strong></article>
-              <article><span>启用会议室</span><strong>{{ stats.active_rooms || 0 }}</strong></article>
-            </div>
-          </section>
-        </section>
-
-        <div v-if="mobileRoomSheetOpen" class="desktop-drawer-mask" @click.self="closeMobileRoomSheet">
-          <aside class="desktop-room-drawer">
-            <header>
-              <div><span>会议室信息</span><h2>{{ roomForm.id ? '编辑会议室' : '新增会议室' }}</h2></div>
-              <button class="icon-button" title="关闭" @click="closeMobileRoomSheet"><X :size="20" /></button>
-            </header>
-            <form class="form-stack" @submit.prevent="saveRoom">
-              <label><span>名称 <b class="required-star">*</b></span><input v-model="roomForm.name" required /></label>
-              <label>位置<input v-model="roomForm.location" /></label>
-              <label><span>容量 <b class="required-star">*</b></span><input v-model.number="roomForm.capacity" type="number" min="1" required /></label>
-              <label>备注/设备<textarea v-model="roomForm.description" rows="4" /></label>
-              <label class="check desktop-room-toggle"><input v-model="roomForm.is_active" type="checkbox" />启用会议室</label>
-              <div class="desktop-drawer-actions">
-                <button type="button" @click="closeMobileRoomSheet">取消</button>
-                <button class="primary" :disabled="loading"><Save :size="17" />保存会议室</button>
-              </div>
+              <label>备注<textarea v-model="bookingForm.note" rows="4" /></label>
+              <div class="pc-drawer-actions"><button type="button" @click="closeDesktopBookingDrawer">取消</button><button class="primary" :disabled="loading || !bookingForm.room_id"><Save :size="17" />{{ bookingForm.id ? '保存修改' : '提交预约' }}</button></div>
             </form>
           </aside>
         </div>
 
-        <button v-show="activeTab !== 'admin'" class="refresh" @click="withLoading(refreshAll)" title="刷新"><RefreshCcw :size="20" /></button>
+        <div v-if="mobileRoomSheetOpen" class="pc-drawer-mask" @click.self="closeMobileRoomSheet">
+          <aside class="pc-drawer">
+            <header><div><span>会议室信息</span><h2>{{ roomForm.id ? '编辑会议室' : '新增会议室' }}</h2></div><button class="icon-button" title="关闭" @click="closeMobileRoomSheet"><X :size="20" /></button></header>
+            <form class="form-stack" @submit.prevent="saveRoom">
+              <label><span>院区 <b class="required-star">*</b></span><select v-model="roomForm.campus" :disabled="roomForm.campus_locked" required><option v-for="campus in CAMPUS_OPTIONS" :key="campus" :value="campus">{{ campus }}</option></select><small v-if="roomForm.campus_locked" class="form-hint">已有预约或周期记录，院区不可修改</small></label><label><span>名称 <b class="required-star">*</b></span><input v-model="roomForm.name" required /></label><label>位置<input v-model="roomForm.location" /></label><label><span>容量 <b class="required-star">*</b></span><input v-model.number="roomForm.capacity" type="number" min="1" required /></label><label>备注/设备<textarea v-model="roomForm.description" rows="4" /></label><label class="check pc-check"><input v-model="roomForm.is_active" type="checkbox" />启用会议室</label>
+              <div class="pc-drawer-actions"><button type="button" @click="closeMobileRoomSheet">取消</button><button class="primary" :disabled="loading"><Save :size="17" />保存会议室</button></div>
+            </form>
+          </aside>
+        </div>
+
+        <div v-if="detailBooking" class="pc-drawer-mask" @click.self="closeDetailSheet">
+          <aside class="pc-drawer">
+            <header><div><span>预约记录</span><h2>会议详情</h2></div><button class="icon-button" title="关闭" @click="closeDetailSheet"><X :size="20" /></button></header>
+            <div class="pc-detail-list">
+              <div><span>会议室</span><strong>{{ detailBooking.room.name }}</strong></div><div><span>院区</span><strong>{{ bookingCampus(detailBooking) }}</strong></div><div><span>时间</span><strong>{{ bookingDateTimeText(detailBooking) }}</strong></div><div><span>地址</span><strong>{{ detailBooking.room.location || '暂无' }}</strong></div><div><span>部门</span><strong>{{ detailBooking.department || detailBooking.applicant.department }}</strong></div><div><span>使用人</span><strong>{{ detailBooking.user_name || detailBooking.applicant.name }}</strong></div><div><span>会议名称</span><strong>{{ detailBooking.title }}</strong></div><div><span>参会人数</span><strong>{{ detailBooking.attendee_count }}人</strong></div><div><span>备注</span><strong>{{ detailBooking.note || '无' }}</strong></div><div><span>状态</span><strong>{{ detailBooking.status === 'active' ? '有效' : '已取消' }}</strong></div>
+            </div>
+          </aside>
+        </div>
+
+        <div v-if="desktopRecurringDrawerOpen" class="pc-drawer-mask" @click.self="closeDesktopRecurringDrawer">
+          <aside class="pc-drawer pc-recurring-drawer">
+            <header><div><span>周期组</span><h2>{{ desktopSelectedSeries ? '周期会议详情' : '新建周期会议' }}</h2></div><button class="icon-button" title="关闭" @click="closeDesktopRecurringDrawer"><X :size="20" /></button></header>
+            <template v-if="desktopSelectedSeries">
+              <div class="pc-detail-list"><div><span>会议名称</span><strong>{{ desktopSelectedSeries.title }}</strong></div><div><span>院区</span><strong>{{ recurringCampus(desktopSelectedSeries) }}</strong></div><div><span>会议室</span><strong>{{ desktopSelectedSeries.room.name }}</strong></div><div><span>周期规则</span><strong>{{ recurringSeriesText(desktopSelectedSeries) }}</strong></div><div><span>科室</span><strong>{{ desktopSelectedSeries.department || desktopSelectedSeries.created_by.department }}</strong></div><div><span>使用人</span><strong>{{ desktopSelectedSeries.user_name || desktopSelectedSeries.created_by.name }}</strong></div><div><span>参会人数</span><strong>{{ desktopSelectedSeries.attendee_count }}人</strong></div><div><span>未来预约</span><strong>{{ desktopSelectedSeries.future_active_booking_count }}次</strong></div><div><span>备注</span><strong>{{ desktopSelectedSeries.note || '无' }}</strong></div><div><span>状态</span><strong>{{ desktopSelectedSeries.status === 'active' ? '有效' : '已取消' }}</strong></div></div>
+              <button v-if="isAdmin && desktopView === 'admin-recurring' && desktopSelectedSeries.status === 'active'" class="danger pc-full-button" @click="cancelDesktopRecurringSeries(desktopSelectedSeries)"><XCircle :size="17" />取消这个周期会议</button>
+            </template>
+            <template v-else>
+              <form class="form-stack" @submit.prevent="previewRecurringBookings">
+                <label><span>会议室 <b class="required-star">*</b></span><select v-model.number="recurringForm.room_id" required><optgroup v-for="group in recurringRoomsByCampus" :key="group.campus" :label="group.campus"><option v-for="room in group.rooms" :key="room.id" :value="room.id">{{ room.name }}</option></optgroup></select></label>
+                <div class="pc-readonly-grid"><label><span>开始日期 <b class="required-star">*</b></span><input v-model="recurringForm.start_date" type="date" required /></label><label><span>结束日期 <b class="required-star">*</b></span><input v-model="recurringForm.end_date" type="date" required /></label></div>
+                <div class="weekday-grid"><button v-for="item in weekdayOptions" :key="item.value" type="button" :class="{ active: recurringForm.weekdays.includes(item.value) }" @click="toggleRecurringWeekday(item.value)">{{ item.label }}</button></div>
+                <div class="time-grid"><label>开始小时<select v-model="recurringForm.start_hour"><option v-for="hour in hourOptions" :key="hour">{{ hour }}</option></select></label><label>开始分钟<select v-model="recurringForm.start_minute"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label><label>结束小时<select v-model="recurringForm.end_hour"><option v-for="hour in endHourOptions" :key="hour">{{ hour }}</option></select></label><label>结束分钟<select v-model="recurringForm.end_minute" :disabled="recurringForm.end_hour === '24'"><option v-for="minute in minuteOptions" :key="minute">{{ minute }}</option></select></label></div>
+                <div class="pc-readonly-grid"><label>部门<input :value="user?.department || ''" readonly /></label><label>使用人<input :value="user?.name || ''" readonly /></label></div>
+                <label><span>会议名称 <b class="required-star">*</b></span><input v-model="recurringForm.title" required /></label><label><span>参会人数 <b class="required-star">*</b></span><input v-model.number="recurringForm.attendee_count" type="number" min="1" required /></label><label>备注<textarea v-model="recurringForm.note" rows="3" /></label>
+                <div class="pc-drawer-actions"><button class="primary" :disabled="loading || recurringForm.weekdays.length === 0 || !recurringForm.room_id">预览</button><button type="button" :disabled="loading || !recurringResult" @click="createDesktopRecurringBookings">确认创建</button></div>
+              </form>
+              <section v-if="recurringResult" class="pc-recurring-result"><h3>{{ recurringSummary }}</h3><div v-if="recurringResult.success.length"><strong>可创建</strong><p v-for="item in recurringResult.success" :key="`pc-s-${item.start_at}`">{{ recurringItemText(item) }}</p></div><div v-if="recurringResult.conflicts.length"><strong>冲突跳过</strong><p v-for="item in recurringResult.conflicts" :key="`pc-c-${item.start_at}`">{{ recurringItemText(item) }} · {{ recurringConflictText(item) }}</p></div><div v-if="recurringResult.expired.length"><strong>过期跳过</strong><p v-for="item in recurringResult.expired" :key="`pc-e-${item.start_at}`">{{ recurringItemText(item) }}</p></div></section>
+            </template>
+          </aside>
+        </div>
       </section>
     </template>
   </main>
