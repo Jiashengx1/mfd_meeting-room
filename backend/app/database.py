@@ -84,8 +84,48 @@ def init_db() -> None:
             )
         conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS department VARCHAR(100)"))
         conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS user_name VARCHAR(100)"))
+        conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_proxy_booking BOOLEAN DEFAULT FALSE"))
+        conn.execute(text("UPDATE bookings SET is_proxy_booking = FALSE WHERE is_proxy_booking IS NULL"))
+        conn.execute(text("ALTER TABLE bookings ALTER COLUMN is_proxy_booking SET DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE bookings ALTER COLUMN is_proxy_booking SET NOT NULL"))
+        conn.execute(text("ALTER TABLE recurring_series ADD COLUMN IF NOT EXISTS is_proxy_booking BOOLEAN DEFAULT FALSE"))
+        conn.execute(text("UPDATE recurring_series SET is_proxy_booking = FALSE WHERE is_proxy_booking IS NULL"))
+        conn.execute(text("ALTER TABLE recurring_series ALTER COLUMN is_proxy_booking SET DEFAULT FALSE"))
+        conn.execute(text("ALTER TABLE recurring_series ALTER COLUMN is_proxy_booking SET NOT NULL"))
+        conn.execute(text("ALTER TABLE recurring_series ADD COLUMN IF NOT EXISTS frequency VARCHAR(20) DEFAULT 'weekly'"))
+        conn.execute(text("UPDATE recurring_series SET frequency = 'weekly' WHERE frequency IS NULL OR frequency = ''"))
+        conn.execute(text("ALTER TABLE recurring_series ALTER COLUMN frequency SET DEFAULT 'weekly'"))
+        conn.execute(text("ALTER TABLE recurring_series ALTER COLUMN frequency SET NOT NULL"))
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = 'ck_recurring_series_frequency'
+                    ) THEN
+                        ALTER TABLE recurring_series
+                        ADD CONSTRAINT ck_recurring_series_frequency
+                        CHECK (frequency IN ('weekly', 'fortnightly'));
+                    END IF;
+                END $$;
+                """
+            )
+        )
         conn.execute(text("ALTER TABLE bookings ADD COLUMN IF NOT EXISTS recurring_series_id INTEGER"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bookings_recurring_series_id ON bookings (recurring_series_id)"))
+        conn.execute(text("ALTER TABLE bookings DROP CONSTRAINT IF EXISTS uq_booking_exact_slot_status"))
+        conn.execute(text("DROP INDEX IF EXISTS uq_booking_exact_slot_status"))
+        conn.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_active_booking_exact_slot
+                ON bookings (room_id, start_at, end_at)
+                WHERE status = 'active'
+                """
+            )
+        )
         conn.execute(
             text(
                 """

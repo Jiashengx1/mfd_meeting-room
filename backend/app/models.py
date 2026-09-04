@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.campuses import Campus, DEFAULT_CAMPUS
@@ -21,6 +21,11 @@ class BookingStatus(str, Enum):
 class RecurringSeriesStatus(str, Enum):
     active = "active"
     cancelled = "cancelled"
+
+
+class RecurringFrequency(str, Enum):
+    weekly = "weekly"
+    fortnightly = "fortnightly"
 
 
 class User(Base):
@@ -71,10 +76,12 @@ class RecurringSeries(Base):
     title: Mapped[str] = mapped_column(String(200))
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_proxy_booking: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     attendee_count: Mapped[int] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
+    frequency: Mapped[RecurringFrequency] = mapped_column(String(20), default=RecurringFrequency.weekly.value, server_default=RecurringFrequency.weekly.value)
     weekdays: Mapped[str] = mapped_column(String(32))
     start_time: Mapped[str] = mapped_column(String(5))
     end_time: Mapped[str] = mapped_column(String(5))
@@ -92,7 +99,17 @@ class RecurringSeries(Base):
 
 class Booking(Base):
     __tablename__ = "bookings"
-    __table_args__ = (UniqueConstraint("room_id", "start_at", "end_at", "status", name="uq_booking_exact_slot_status"),)
+    __table_args__ = (
+        Index(
+            "uq_active_booking_exact_slot",
+            "room_id",
+            "start_at",
+            "end_at",
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id"), index=True)
@@ -102,6 +119,7 @@ class Booking(Base):
     title: Mapped[str] = mapped_column(String(200))
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_proxy_booking: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     attendee_count: Mapped[int] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

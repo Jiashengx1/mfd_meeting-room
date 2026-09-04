@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.audit import log_action
-from app.models import Booking, BookingStatus, RecurringSeries, RecurringSeriesStatus, Room, User, UserRole
+from app.models import Booking, BookingStatus, RecurringFrequency, RecurringSeries, RecurringSeriesStatus, Room, User, UserRole
 from app.schemas import BookingCreate, BookingUpdate, RecurringBookingItem, RecurringBookingRequest, RecurringBookingResult, RecurringSeriesCancelResult
 from app.time_utils import SHANGHAI, assert_not_past, day_bounds, now_shanghai, validate_range
 
@@ -57,6 +57,24 @@ def ensure_admin(actor: User) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅管理员可操作")
 
 
+def resolve_usage_identity(
+    owner: User,
+    is_proxy_booking: bool,
+    department: str | None,
+    user_name: str | None,
+) -> tuple[str, str, bool]:
+    if not is_proxy_booking:
+        return owner.department, owner.name, False
+
+    resolved_department = (department or "").strip()
+    resolved_user_name = (user_name or "").strip()
+    if not resolved_department or not resolved_user_name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="代约时部门和使用人为必填项")
+    if any(separator in resolved_user_name for separator in ("、", ",", "，", "/", ";", "；", "\n")):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="使用人只能填写一名主要负责人")
+    return resolved_department, resolved_user_name, True
+
+
 def find_conflict(db: Session, room_id: int, start_at, end_at) -> Booking | None:
     return (
         db.query(Booking)
@@ -81,10 +99,13 @@ def recurring_dates(payload: RecurringBookingRequest) -> list[date]:
     weekdays = set(payload.weekdays)
     if any(day < 0 or day > 6 for day in weekdays):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="重复星期必须在 0-6 之间")
+    interval_weeks = 2 if payload.frequency == RecurringFrequency.fortnightly else 1
+    anchor_week_start = payload.start_date - timedelta(days=payload.start_date.weekday())
     result: list[date] = []
     current = payload.start_date
     while current <= payload.end_date:
-        if current.weekday() in weekdays:
+        weeks_since_anchor = (current - anchor_week_start).days // 7
+        if current.weekday() in weekdays and weeks_since_anchor % interval_weeks == 0:
             result.append(current)
         current += timedelta(days=1)
     return result
@@ -121,10 +142,12 @@ def recurring_series_out(db: Session, series: RecurringSeries) -> dict:
         "title": series.title,
         "department": series.department,
         "user_name": series.user_name,
+        "is_proxy_booking": series.is_proxy_booking,
         "attendee_count": series.attendee_count,
         "note": series.note,
         "start_date": series.start_date,
         "end_date": series.end_date,
+        "frequency": series.frequency,
         "weekdays": recurring_weekdays_list(series.weekdays),
         "start_time": series.start_time,
         "end_time": series.end_time,
@@ -139,6 +162,12 @@ def recurring_series_out(db: Session, series: RecurringSeries) -> dict:
 def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor: User, *, create: bool) -> RecurringBookingResult:
     ensure_admin(actor)
     room = check_room_available(db, payload.room_id)
+    department, user_name, is_proxy_booking = resolve_usage_identity(
+        actor,
+        payload.is_proxy_booking,
+        payload.department,
+        payload.user_name,
+    )
     if payload.attendee_count > room.capacity:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="参会人数超过会议室容量")
 
@@ -154,12 +183,14 @@ def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor:
             created_by_id=actor.id,
             campus=room.campus,
             title=payload.title,
-            department=actor.department,
-            user_name=actor.name,
+            department=department,
+            user_name=user_name,
+            is_proxy_booking=is_proxy_booking,
             attendee_count=payload.attendee_count,
             note=payload.note,
             start_date=payload.start_date,
             end_date=payload.end_date,
+            frequency=payload.frequency.value,
             weekdays=recurring_weekdays_value(payload.weekdays),
             start_time=payload.start_time,
             end_time=payload.end_time,
@@ -167,7 +198,8 @@ def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor:
         )
         db.add(series)
         db.flush()
-        log_action(db, actor, "create", "recurring_series", series.id)
+        detail = f"代约：{department} {user_name}" if is_proxy_booking else None
+        log_action(db, actor, "create", "recurring_series", series.id, detail)
 
     for booking_date in recurring_dates(payload):
         start_at, end_at = validate_range(booking_date, payload.start_time, payload.end_time)
@@ -205,8 +237,9 @@ def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor:
                         recurring_series_id=series.id if series else None,
                         campus=room.campus,
                         title=payload.title,
-                        department=actor.department,
-                        user_name=actor.name,
+                        department=department,
+                        user_name=user_name,
+                        is_proxy_booking=is_proxy_booking,
                         attendee_count=payload.attendee_count,
                         note=payload.note,
                         start_at=start_at,
@@ -215,7 +248,8 @@ def build_recurring_result(db: Session, payload: RecurringBookingRequest, actor:
                     )
                     db.add(booking)
                     db.flush()
-                    log_action(db, actor, "create", "booking", booking.id)
+                    detail = f"代约：{department} {user_name}" if is_proxy_booking else None
+                    log_action(db, actor, "create", "booking", booking.id, detail)
             except IntegrityError:
                 conflict = find_conflict(db, payload.room_id, start_at, end_at)
                 conflicts.append(
@@ -332,6 +366,12 @@ def cancel_recurring_series(db: Session, actor: User, series_id: int) -> Recurri
 
 def create_booking(db: Session, actor: User, payload: BookingCreate) -> Booking:
     room = check_room_available(db, payload.room_id)
+    department, user_name, is_proxy_booking = resolve_usage_identity(
+        actor,
+        payload.is_proxy_booking,
+        payload.department,
+        payload.user_name,
+    )
     start_at, end_at = validate_range(payload.booking_date, payload.start_time, payload.end_time)
     assert_not_past(end_at)
     if payload.attendee_count > room.capacity:
@@ -342,8 +382,9 @@ def create_booking(db: Session, actor: User, payload: BookingCreate) -> Booking:
         applicant_id=actor.id,
         campus=room.campus,
         title=payload.title,
-        department=actor.department,
-        user_name=actor.name,
+        department=department,
+        user_name=user_name,
+        is_proxy_booking=is_proxy_booking,
         attendee_count=payload.attendee_count,
         note=payload.note,
         start_at=start_at,
@@ -356,7 +397,8 @@ def create_booking(db: Session, actor: User, payload: BookingCreate) -> Booking:
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该时间段已被预约") from exc
-    log_action(db, actor, "create", "booking", booking.id)
+    detail = f"代约：{department} {user_name}" if is_proxy_booking else None
+    log_action(db, actor, "create", "booking", booking.id, detail)
     db.commit()
     db.refresh(booking)
     return get_booking_or_404(db, booking.id)
@@ -391,12 +433,23 @@ def update_booking(db: Session, actor: User, booking: Booking, payload: BookingU
     if "note" in payload.model_fields_set:
         booking.note = payload.note
 
+    is_proxy_booking = payload.is_proxy_booking if "is_proxy_booking" in payload.model_fields_set else booking.is_proxy_booking
+    department = payload.department if "department" in payload.model_fields_set else booking.department
+    user_name = payload.user_name if "user_name" in payload.model_fields_set else booking.user_name
+    booking.department, booking.user_name, booking.is_proxy_booking = resolve_usage_identity(
+        booking.applicant,
+        bool(is_proxy_booking),
+        department,
+        user_name,
+    )
+
     try:
         db.flush()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="该时间段已被预约") from exc
-    log_action(db, actor, "update", "booking", booking.id)
+    detail = f"代约：{booking.department} {booking.user_name}" if booking.is_proxy_booking else None
+    log_action(db, actor, "update", "booking", booking.id, detail)
     db.commit()
     return get_booking_or_404(db, booking.id)
 
@@ -419,6 +472,10 @@ def cancel_booking(db: Session, actor: User, booking: Booking) -> Booking:
 
 def active_bookings_for_day(db: Session, target: date, room_ids: list[int] | None = None) -> list[Booking]:
     start, end = day_bounds(target)
+    return active_bookings_for_range(db, start, end, room_ids)
+
+
+def active_bookings_for_range(db: Session, start, end, room_ids: list[int] | None = None) -> list[Booking]:
     query = (
         db.query(Booking)
         .options(joinedload(Booking.room), joinedload(Booking.applicant))

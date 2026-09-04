@@ -29,6 +29,7 @@ export interface Booking {
   title: string
   department?: string | null
   user_name?: string | null
+  is_proxy_booking: boolean
   attendee_count: number
   note?: string | null
   start_at: string
@@ -47,12 +48,16 @@ export interface RecurringBookingPayload {
   room_id: number
   start_date: string
   end_date: string
+  frequency: 'weekly' | 'fortnightly'
   weekdays: number[]
   start_time: string
   end_time: string
   title: string
   attendee_count: number
   note?: string | null
+  department?: string | null
+  user_name?: string | null
+  is_proxy_booking: boolean
 }
 
 export interface RecurringBookingItem {
@@ -73,10 +78,12 @@ export interface RecurringSeries {
   title: string
   department?: string | null
   user_name?: string | null
+  is_proxy_booking: boolean
   attendee_count: number
   note?: string | null
   start_date: string
   end_date: string
+  frequency: 'weekly' | 'fortnightly'
   weekdays: number[]
   start_time: string
   end_time: string
@@ -104,6 +111,13 @@ export interface DaySchedule {
   date: string
   campus: Campus
   rooms: RoomSchedule[]
+}
+
+export interface WeekSchedule {
+  week_start: string
+  week_end: string
+  room: Room
+  bookings: Booking[]
 }
 
 const configuredApiBase = import.meta.env.VITE_API_BASE_URL || ''
@@ -160,6 +174,8 @@ export const api = {
   updateRoom: (id: number, payload: Partial<Room>) =>
     request<Room>(`/api/rooms/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   schedule: (date: string, campus: Campus) => request<DaySchedule>(`/api/bookings/schedule?target_date=${date}&campus=${encodeURIComponent(campus)}`),
+  weekSchedule: (roomId: number, weekStart: string) =>
+    request<WeekSchedule>(`/api/bookings/schedule/week?room_id=${roomId}&week_start=${weekStart}`),
   bookings: (targetDate?: string, campus?: Campus) => {
     const params = new URLSearchParams()
     if (targetDate) params.set('target_date', targetDate)

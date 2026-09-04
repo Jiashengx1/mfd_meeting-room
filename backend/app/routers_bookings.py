@@ -1,14 +1,14 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.campuses import Campus, DEFAULT_CAMPUS
 from app.models import Booking, BookingStatus, Room, User, UserRole
-from app.schemas import BookingCreate, BookingOut, BookingUpdate, DaySchedule, RecurringBookingRequest, RecurringBookingResult, RecurringSeriesCancelResult, RecurringSeriesOut, RoomSchedule
-from app.services import active_bookings_for_day, booking_scope, cancel_booking, cancel_recurring_series, create_booking, create_recurring_bookings, get_booking_or_404, list_recurring_series, preview_recurring_bookings, update_booking
+from app.schemas import BookingCreate, BookingOut, BookingUpdate, DaySchedule, RecurringBookingRequest, RecurringBookingResult, RecurringSeriesCancelResult, RecurringSeriesOut, RoomSchedule, WeekSchedule
+from app.services import active_bookings_for_day, active_bookings_for_range, booking_scope, cancel_booking, cancel_recurring_series, create_booking, create_recurring_bookings, get_booking_or_404, list_recurring_series, preview_recurring_bookings, update_booking
 from app.time_utils import SHANGHAI, day_bounds
 
 router = APIRouter(prefix="/api/bookings", tags=["bookings"])
@@ -31,6 +31,25 @@ def schedule(
         campus=campus,
         rooms=[RoomSchedule(room=room, bookings=by_room.get(room.id, [])) for room in rooms],
     )
+
+
+@router.get("/schedule/week", response_model=WeekSchedule)
+def week_schedule(
+    room_id: int,
+    week_start: date,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> WeekSchedule:
+    if week_start.weekday() != 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="week_start 必须是周一")
+    room = db.query(Room).filter(Room.id == room_id).one_or_none()
+    if not room:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议室不存在")
+    start_at, _ = day_bounds(week_start)
+    week_end = week_start + timedelta(days=6)
+    _, end_at = day_bounds(week_end)
+    bookings = active_bookings_for_range(db, start_at, end_at, [room.id])
+    return WeekSchedule(week_start=week_start, week_end=week_end, room=room, bookings=bookings)
 
 
 @router.get("", response_model=list[BookingOut])

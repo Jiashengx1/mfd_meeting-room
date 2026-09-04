@@ -3,6 +3,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, Field
 
 from app.campuses import Campus
+from app.models import RecurringFrequency
 
 
 class TokenResponse(BaseModel):
@@ -70,6 +71,9 @@ class BookingBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     attendee_count: int = Field(gt=0, le=10000)
     note: str | None = Field(default=None, max_length=2000)
+    department: str | None = Field(default=None, max_length=100)
+    user_name: str | None = Field(default=None, max_length=100)
+    is_proxy_booking: bool = False
 
 
 class BookingCreate(BookingBase):
@@ -84,6 +88,9 @@ class BookingUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     attendee_count: int | None = Field(default=None, gt=0, le=10000)
     note: str | None = Field(default=None, max_length=2000)
+    department: str | None = Field(default=None, max_length=100)
+    user_name: str | None = Field(default=None, max_length=100)
+    is_proxy_booking: bool | None = None
 
 
 class BookingOut(BaseModel):
@@ -95,6 +102,7 @@ class BookingOut(BaseModel):
     title: str
     department: str | None
     user_name: str | None
+    is_proxy_booking: bool
     attendee_count: int
     note: str | None
     start_at: datetime
@@ -110,12 +118,16 @@ class RecurringBookingRequest(BaseModel):
     room_id: int
     start_date: date
     end_date: date
+    frequency: RecurringFrequency = RecurringFrequency.weekly
     weekdays: list[int] = Field(min_length=1, max_length=7)
     start_time: str = Field(pattern=r"^\d{2}:\d{2}$")
     end_time: str = Field(pattern=r"^\d{2}:\d{2}$")
     title: str = Field(min_length=1, max_length=200)
     attendee_count: int = Field(gt=0, le=10000)
     note: str | None = Field(default=None, max_length=2000)
+    department: str | None = Field(default=None, max_length=100)
+    user_name: str | None = Field(default=None, max_length=100)
+    is_proxy_booking: bool = False
 
 
 class RecurringBookingItem(BaseModel):
@@ -136,10 +148,12 @@ class RecurringSeriesOut(BaseModel):
     title: str
     department: str | None
     user_name: str | None
+    is_proxy_booking: bool
     attendee_count: int
     note: str | None
     start_date: date
     end_date: date
+    frequency: RecurringFrequency
     weekdays: list[int]
     start_time: str
     end_time: str
@@ -170,6 +184,13 @@ class DaySchedule(BaseModel):
 
 
 class RoomSchedule(BaseModel):
+    room: RoomOut
+    bookings: list[BookingOut]
+
+
+class WeekSchedule(BaseModel):
+    week_start: date
+    week_end: date
     room: RoomOut
     bookings: list[BookingOut]
 
