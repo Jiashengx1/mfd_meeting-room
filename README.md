@@ -89,7 +89,9 @@ docker compose up -d --build backend
 
 ## 生产部署要点
 
-建议生产环境使用一台轻量服务器，通过外层 Nginx 提供 HTTPS，并反向代理到本机端口：
+当前正式地址为 `https://srrshywk.online`。`http` 和 `www` 入口均跳转到该地址。
+
+生产环境使用一台轻量服务器，通过外层 Nginx 提供 HTTPS，并反向代理到本机端口：
 
 - `https://你的域名/` -> `http://127.0.0.1:5173`
 - `https://你的域名/api/` -> `http://127.0.0.1:8000/api/`
@@ -108,7 +110,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 POSTGRES_PASSWORD=强数据库密码
 DATABASE_URL=postgresql+psycopg://meeting_room:强数据库密码@db:5432/meeting_room
 SECRET_KEY=强随机字符串
-BACKEND_CORS_ORIGINS=https://你的域名
+BACKEND_CORS_ORIGINS=https://srrshywk.online,https://www.srrshywk.online
 VITE_API_BASE_URL=
 ```
 
@@ -128,7 +130,27 @@ VITE_API_BASE_URL=
 
 `PUBLISH_HOST=127.0.0.1` 会将这些服务端口绑定到服务器本机，只能由服务器本机访问。
 
-示例 Nginx 配置：
+正式 Nginx 配置位于 `deploy/nginx/meeting-room.conf`。首次部署时先使用 HTTP 配置完成证书签发：
+
+```bash
+certbot certonly --nginx \
+  -d srrshywk.online \
+  -d www.srrshywk.online \
+  --email 你的邮箱 \
+  --agree-tos \
+  --no-eff-email
+```
+
+证书签发后部署正式配置并验证：
+
+```bash
+cp deploy/nginx/meeting-room.conf /etc/nginx/conf.d/meeting-room.conf
+nginx -t
+systemctl reload nginx
+certbot renew --dry-run
+```
+
+基础反向代理结构：
 
 ```nginx
 server {
