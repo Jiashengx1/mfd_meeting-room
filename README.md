@@ -89,12 +89,12 @@ docker compose up -d --build backend
 
 ## 生产部署要点
 
-当前正式地址为 `https://srrshywk.online`。`http` 和 `www` 入口均跳转到该地址。
+会议室系统正式地址为 `https://meeting.srrshywk.online`。根域名、`www`、`http` 和旧 IP 入口暂时均跳转到该地址；根域名后续可替换为应用导航门户。
 
 生产环境使用一台轻量服务器，通过外层 Nginx 提供 HTTPS，并反向代理到本机端口：
 
-- `https://你的域名/` -> `http://127.0.0.1:5173`
-- `https://你的域名/api/` -> `http://127.0.0.1:8000/api/`
+- `https://meeting.srrshywk.online/` -> `http://127.0.0.1:5173`
+- `https://meeting.srrshywk.online/api/` -> `http://127.0.0.1:8000/api/`
 
 前端容器运行的是构建后的静态预览服务，公网入口仍由服务器 Nginx 负责 HTTPS 和反向代理。
 
@@ -110,7 +110,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 POSTGRES_PASSWORD=强数据库密码
 DATABASE_URL=postgresql+psycopg://meeting_room:强数据库密码@db:5432/meeting_room
 SECRET_KEY=强随机字符串
-BACKEND_CORS_ORIGINS=https://srrshywk.online,https://www.srrshywk.online
+BACKEND_CORS_ORIGINS=https://meeting.srrshywk.online
 VITE_API_BASE_URL=
 ```
 
@@ -136,6 +136,7 @@ VITE_API_BASE_URL=
 certbot certonly --nginx \
   -d srrshywk.online \
   -d www.srrshywk.online \
+  -d meeting.srrshywk.online \
   --email 你的邮箱 \
   --agree-tos \
   --no-eff-email
